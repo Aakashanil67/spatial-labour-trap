@@ -1,0 +1,304 @@
+# Design decisions
+
+Why the model is built the way it is, in the order the decisions actually got made. This file
+gets appended to as the project moves; nothing here is written after the fact to make a choice
+look more deliberate than it was.
+
+Two rounds of adversarial review sit behind most of this. Round 1 caught six model-specification
+bugs that would have surfaced in week 4 or 5 of an eight-week build and cost real time to unwind.
+Round 2 caught a different, more dangerous class: defects that produce plausible output with no
+error and no warning. Both rounds are recorded below because the reasoning is part of the
+methodology, not just the fix.
+
+## Locked commitments (from the supervisor-approved proposal, never renegotiated in code)
+
+1. Matching efficiency `a` is recovered by fitting Cobb-Douglas to simulated data, never imposed.
+2. Policy comparisons are cost-equalised: employment gained per rand under a common budget `B`.
+3. Calibration is method of simulated moments against four empirical moments.
+4. DMP equations are an aggregate benchmark only; agents act on local heuristics.
+5. Firms post vacancies endogenously via a profit heuristic.
+6. Discouragement is not absorbing.
+7. Fixed seeds everywhere; nothing goes into the thesis that I can't explain line by line.
+
+## D1 -- Mesa 3.5.1, AgentSet activation, no scheduler
+
+Mesa removed `mesa.time` entirely as of 3.0. There is no `RandomActivation` to reach for.
+Agents activate via `self.agents.shuffle_do("step")` on the model's built-in `AgentSet`, and
+`Agent.__init__` takes `(self, model)` with `unique_id` assigned automatically. Some of the
+scaffolding literature I started from was written against Mesa 2 and talks about "explaining the
+scheduler choice" -- there isn't one to explain in this version, which is a better question, not
+a worse one: why shuffled activation instead of simultaneous update, and does the answer to any
+of the four calibration moments move if you change it. That's now a test
+(`test_activation_order_robustness`), not a paragraph of hand-waving.
+
+## D2 -- The belief parameter enters as perceived-rate and targeting bias, not as a price
+
+First draft of the search rule was `beta * p_hat_local * delta_w > c(d)`: travel if the
+perceived value of searching beats the cost. That's wrong for what the beliefs-vs-scarcity
+decomposition (prompt 4.5) needs. `beta` there is exactly collinear with `delta_w` and inversely
+collinear with `c` -- multiplying the wage gap by 1.2 and setting beta to 1.2 do the same thing
+to every equation in the model. Varying "belief" in that decomposition would have been
+indistinguishable from varying a price, and the decomposition would have identified nothing.
+
+`beta` instead biases the agent's *perceived* local offer rate away from the realised one, and
+biases *where* trips get targeted -- towards locations the agent (wrongly) believes are more
+promising. That's mistargeted search, which is the actual mechanism Banerjee and Sequeira (2023)
+point to for their null result, and it isn't collinear with a price.
+
+## D3 -- Cell aggregates, not agent panels, keyed on the initial wealth draw
+
+Per-agent panels at N=5,000 seekers x T=120 months x 100 seeds is on the order of 60 million rows
+per scenario. Recording `(distance_band x initial_wealth_quartile x step)` aggregates instead
+gets to roughly 2,400 rows per run -- exactly the granularity the heterogeneity cuts in prompt
+5.2 need, at a fraction of the storage and none of the reproducibility risk that comes with
+carrying individual agent identifiers through a public results file.
+
+Two things nearly went wrong here. First: cell aggregates record stocks, and the unemployment
+duration distribution -- one of only four calibration targets -- is a property of an individual
+spell, not a stock. A pure aggregate schema can't produce it. Second: whether the wealth
+quartile is the agent's *initial* wealth draw or their *current* search capital matters a lot
+more than it sounds. If it's current capital, a transport subsidy mechanically raises capital,
+agents migrate up quartiles during the very policy experiment being measured, and the
+heterogeneity cut -- which this thesis treats as the answer to "under what conditions", not a
+side result -- becomes an artefact of the treatment rather than a description of who it helped.
+Prompt 5.2 already specifies "initial wealth quartile"; the collector now matches its own spec.
+`wealth_quartile` is assigned once at initialisation and never updated. There's a test for that:
+quartile membership has to be constant for every agent across a full run.
+
+The duration problem is solved by adding two small, fixed-size structures alongside the cell
+aggregates, neither of which is an agent panel:
+
+1. The actual calibration target -- at each measurement step, among agents *currently*
+   unemployed, the share whose in-progress spell already exceeds twelve months. This mirrors the
+   QLFS definition, which measures ongoing duration among the current stock of unemployed people,
+   not completed spells.
+2. A completed-spell histogram with a right-censored bucket, kept only as a descriptive
+   secondary output, because completed spells and a surveyed stock are different statistics
+   under length-biased sampling -- a shorter true spell is more likely to complete inside any
+   fixed observation window, so a completed-spell distribution is biased towards short durations
+   relative to what a survey of the current stock would show. Treating the two as
+   interchangeable would have quietly mismeasured the moment that pins the vacancy-sensitivity
+   parameter.
+
+Plus flow counters into and out of discouragement, and per-cell spell counts.
+
+There's also an optional `trace_agent_ids` list in config: a full per-step panel for a handful of
+named agents and one firm, off by default. This is what the wealth-trajectory-through-search-
+discouragement-re-entry figure comes from, and it's the thing I narrate at the end of week 1 to
+prove locked commitment 6 is actually implemented and not just asserted in a config comment.
+
+## D4 -- Performance gate on total campaign wall clock, not seconds per run
+
+The real compute campaign across calibration, sweeps, experiments and robustness is roughly
+7,300 named runs (Latin hypercube 3,000, Nelder-Mead ~2,000, 50 at the optimum, sweeps 1,620,
+experiments 500, condition mapping 810), with headroom in that count for whatever the
+pass-through grid and the beliefs/scarcity decomposition add on top. The gate that actually
+matters is whether one full campaign completes inside a single overnight window, on the machine
+I'm actually using -- not an abstract per-run millisecond target.
+
+Measured on day one: `psutil.cpu_count(logical=False)` reports **6 physical cores**, 12 logical
+(this is a 6-core/12-thread CPU). CPU-bound work gets `n_jobs=6`; the logical count overstates
+useful parallelism for compute-bound simulation because two hyperthreads on one physical core
+are contending for the same execution units, not doubling throughput. Confirmed
+`joblib`'s `loky` (spawn) backend actually parallelises rather than silently serialising: a
+stdlib-only smoke test with 12 tasks on `n_jobs=6` returned six distinct worker PIDs and
+deterministic, non-colliding per-seed results in 1.5 seconds.
+
+If the benchmark on `configs/baseline.yaml` at the real N and T comes in too slow for an
+overnight campaign, the contingency is a vectorised NumPy fast path with an equivalence test
+against the Mesa implementation. "Equivalence" can't mean bit-identical -- Mesa's shuffled
+`AgentSet` activation consumes the model's RNG stream in a different order than a vectorised
+pass ever would, so matching it draw-for-draw isn't a real target. The actual three-part
+criterion: each implementation is byte-identical to itself when re-run at a fixed seed; the two
+implementations agree exactly under one degenerate, fully deterministic config where ordering
+can't matter; and every calibration-target moment matches distributionally across 30 seeds,
+within Monte Carlo error.
+
+## D5 -- Budget equalisation is a per-period cap with rationing, reported as an absorption rate
+
+The wage subsidy's spend tracks an employment *stock*; the transport subsidy's tracks a trip
+*flow*. Those aren't the same kind of quantity, so "equal budget" needs a definition, not just an
+assertion. The definition used here: each policy gets a per-period cap `B`, metered as it's
+spent, switching off within a period once exhausted.
+
+The ledger reports per-period spend, cumulative spend, and `absorption_rate = spend / B` per
+scenario per period. It does not assert `spend == B` exactly -- a policy that physically cannot
+absorb its full allocation in a given period (not enough eligible trips to subsidise, say) is a
+finding about that policy, not a bug in the accounting, and hiding it behind a forced equality
+would be worse than reporting it.
+
+When the cap binds and rationing is needed, eligible agents are drawn by a uniform lottery under
+the run's own seed. The alternative -- leaving it to whatever order `shuffle_do` happens to
+process agents in that step -- would make rationing outcomes a side effect of activation order
+rather than a stated policy choice, and it lands directly on the distance-band and wealth-
+quartile heterogeneity cuts, which are meant to be the answer to the thesis's second
+sub-question. Pro-rata rescaling of the per-agent subsidy rate was the other option considered
+and rejected: it changes the price every agent faces rather than the number of agents served,
+which is a materially different policy than the one being modelled.
+
+## D6 -- Digitise the Baez-Kshirsagar tables rather than run their reproducibility package
+
+The World Bank reproducibility package for Baez and Kshirsagar (2026), `RR_ZAF_2025_490`
+(DOI `10.60572/t00p-5p24`), needs R 4.5.1 and licensed Stata 18 MP. Fighting a Stata dependency
+for a single calibration moment on a twelve-week clock is a bad trade for what it buys. Reading
+the published tables and band midpoints by hand, with the table number and page recorded in the
+notebook, gets the same number with a documented provenance trail and no licence to acquire.
+
+## D7 -- Provisional moments, frozen at the start of calibration, not after it
+
+`moments.csv` carries a `provisional` flag. Early drafts of this rule froze the moment set at
+the end of the validation week (week 5) rather than the start of calibration (week 4) -- which
+would have meant a real microdata result landing mid-calibration could force a redo of both
+calibration *and* the validation exercise built on top of it, in weeks with no slack left to
+absorb that. The moment set now freezes when calibration begins: anything still provisional at
+the start of week 4 stays provisional for the headline results, and a microdata version that
+lands afterward goes in a robustness appendix and never triggers a recalibration.
+
+## D8 -- No AI-attribution trailers, enforced in week 1, not audited in week 8
+
+The coding environment I'm using appends `Co-Authored-By` trailers to commits by default. The
+original plan for catching this was a `kill-slop` audit pass in the final week of coding -- by
+which point six version tags already exist, and removing a trailer at that point means a
+force-push and moving every tag, which is exactly the kind of history rewrite this rule exists to
+avoid in the first place. A `commit-msg` hook installed on day one
+(`tools/hooks/check_commit_msg.py`) rejects the trailer pattern before it's ever committed.
+Tested by attempting a commit that carries one and confirming it's rejected.
+
+## D9 -- Microdata is blocked by content, not just by path
+
+`.gitignore` stops an accidental `git add`. It does nothing against a deliberate `git add -f`,
+and it does nothing if a QLFS extract gets renamed to something that doesn't match the ignored
+patterns. `tools/hooks/check_no_microdata.py` runs on every commit regardless of `-f`, checking
+both file extension/path and the first bytes of staged files against Stata/SPSS magic numbers.
+Notebook outputs are stripped by `nbstripout` on every commit for the same reason: restart-and-
+run-all discipline means a committed notebook carries its outputs, and a printed dataframe of
+QLFS rows in a notebook cell is a licence breach exactly as much as a raw file would be.
+
+## D10 -- Wage normalised to 1
+
+`c`, `W0`, the household inflow `g`, the wage gap, and the policy budget `B` are all money
+quantities. Scale every one of them by the same constant and the model's behaviour is
+unchanged -- so estimating all of them freely, as an early draft of the calibration did, left
+the parameter set identified only up to an arbitrary scale. The wage is normalised to 1 and
+everything else is estimated relative to it; results are rebased to rand only at the point
+they're reported.
+
+## D11 -- Measurement timing: stocks before matching, flows during it
+
+Once firms post vacancies endogenously in response to local seeker density (see the firm
+heuristic below), `v_t` responds *within* a period to the same density that produces `m_t` in
+that same period. If the collector recorded `u` and `v` after the matching step ran, the
+regressor in the matching-function fit would be contaminated by the outcome it's supposed to
+explain -- and the contamination wouldn't be the same size in the frictional and frictionless
+configs, because the within-period flows differ between them, so it wouldn't even cancel out in
+the sub-question 1 comparison. The convention: `u_t` and `v_t` are recorded as start-of-period
+stocks, before the matching call for step `t` runs; `m_t` is the count of hires resolved during
+step `t`. Two tests hold this in place: `m_t <= min(u_t, v_t)` every step, and the exact stock
+identity `u_{t+1} = u_t - m_t + lambda * l_t - exits_to_discouragement + re_entries`.
+
+## D12 -- Common random numbers inside the calibration search
+
+Nelder-Mead has no built-in defence against a noisy objective. If the 15 seeds used to evaluate
+the simulated-moments loss are redrawn independently at every trial parameter vector, the loss
+surface itself is stochastic: the simplex can contract onto a random fluctuation and report a
+false convergence, or wander indefinitely and burn through the evaluation budget without ever
+settling. A restart policy for simplex collapse treats the symptom, not the cause. The actual
+fix is common random numbers: one fixed list of 15 seeds, held in `config.py`, reused at every
+parameter evaluation during both the Latin hypercube stage and the Nelder-Mead stage, so the
+loss becomes a deterministic function of the parameters being searched over and the simplex
+contracts on the real surface rather than on sampling noise. The 50-seed evaluation reported at
+the optimum uses a disjoint seed list, so the fit quality reported in the thesis isn't measured
+on the exact seeds the optimiser was allowed to fit to. There's a test for the determinism
+itself: two evaluations of the loss at the same parameter vector return an identical float.
+
+## `dmp.py` and locked commitment 1
+
+Chen's (2025) Appendix B system takes matching efficiency `a` as an input to solve for the
+steady state -- which sits uncomfortably close to locked commitment 1 (`a` is recovered, never
+imposed) unless the boundary is stated precisely. `a` is a required argument to `dmp.py` with no
+default, supplied by fitting the frictionless ABM configuration, never by Chen's own calibrated
+value. What the benchmark actually checks is internal consistency of `(theta, q, u, v, w)` given
+that `a` -- not the level of `a` itself. Two further mismatches, both stated in the module
+docstring rather than left implicit: Chen normalises productivity to 1 with the wage determined
+endogenously by Nash bargaining, while this model normalises the wage to 1 (D10) -- feeding one
+model's outputs into the other's equations without conversion would silently rescale everything.
+And Chen's whole system is calibrated at quarterly frequency while this model steps monthly.
+Solved with `scipy.optimize.least_squares` under bounds, not a bare `fsolve`, which is unbounded
+and will return a mathematically valid but economically nonsensical `l < 0` from a poor starting
+point without complaint.
+
+## The AR(1) productivity shock is rebased from quarterly to monthly, not copied
+
+Chen (2025) Table 1 reports `rho = 0.612` and `sigma = 0.0085` for the TFP process, sourced from
+Kudoh et al. (2019) -- at **quarterly** frequency. This model steps monthly. Using 0.612 directly
+as a monthly persistence understates the shock's actual persistence by roughly a factor of
+three, which matters here specifically because that persistence is what generates the `(u, v)`
+co-movement the matching-function regression needs variation in. Rebased by matching the
+lag-3 autocorrelation and the unconditional variance: `rho_A = 0.612^(1/3) ~= 0.849`,
+`sigma_A = 0.0085 * sqrt((1 - 0.849^2) / (1 - 0.612^2)) ~= 0.0057`. Named `rho_A` in config,
+deliberately distinct from `rho`, which is the neighbourhood matching radius and one of the four
+free calibration parameters -- sharing a name would have let the optimiser silently move the
+shock persistence while searching over the matching radius.
+
+## The separation rate is estimated locally, with a documented foreign fallback
+
+Chen's separation rate traces back to Miyamoto (2011): a Japanese **monthly** exit probability of
+0.0048, which Chen multiplies by three to report a quarterly 0.0144. Using that number here by
+default would mean calibrating a stated South African mechanism on a Japanese labour-market
+parameter with no argument for why the two should match. The separation rate is instead computed
+from South African employed-to-not-employed quarter-to-quarter transitions in PALMS/QLFS, inside
+the same notebook that already opens that data to build the duration-distribution moment.
+Miyamoto's 0.0048 is kept only as a fallback if the South African transition rate isn't
+computable by the end of week 3, and if it's used, that substitution is flagged here as a foreign
+calibration, not silently absorbed into the parameter table.
+
+## The matching-function fit tests constant returns before assuming it
+
+Neighbourhood matching within a fixed radius, on a fixed grid, with a fixed number of firm
+nodes, has no particular reason to be constant-returns-to-scale -- and if the degree of returns
+differs between the frictional and frictionless configurations, a difference in the fitted
+matching efficiency `a` between them would mix a genuine efficiency loss with pure approximation
+error from evaluating a mis-specified functional form at two different points in `(u, v)` space.
+The same risk shows up again in the policy experiments: under a wage subsidy, vacancies rise
+endogenously, so a shift in `a` there could be compositional rather than a real efficiency
+change. The unconstrained regression `log m = log a + b_u log u + b_v log v` is reported first,
+with `b_u + b_v` and a Wald test of `b_u + b_v = 1` for every configuration, before the
+CRS-constrained `a` is reported as the headline number. If the test fails in one configuration
+but not another, the `a`-difference between them gets reported as contaminated by misspecification,
+not as a clean efficiency measurement. Chen's own `a = 0.471` is a quarterly Japanese calibration,
+useful only as an order-of-magnitude sanity anchor -- never a number this model is compared
+against directly.
+
+## Two definitional traps in the moments, found while sourcing provisional values
+
+**The discouraged-share moment.** StatsSA stopped publishing the "expanded unemployment rate"
+after Q2:2025 and replaced it with a broader indicator, LU3, which also folds in non-searchers
+available for other reasons and searchers who weren't available in the reference period. The two
+are not the same quantity (42.9 vs 42.4 per cent in adjacent quarters makes them look similar by
+coincidence, not by definition). The discouraged-share moment has to be computed from microdata
+using the StatsSA discouraged work-seeker definition directly, at one fixed QLFS vintage stated
+in the notebook -- not lifted from a media release headline number, which could silently mix two
+different definitions across the sample period.
+
+**The transport-budget-share moment.** At least three published numbers answer "what share of
+household spending goes to transport", and they differ by roughly a factor of four depending on
+what's being measured: transport as a share of total household consumption expenditure
+(15.3 per cent, nationally); the share of urban public-transport-using households spending more
+than 20 per cent of per-capita household income on transport (60.1 per cent urban, 54.7 in
+metros); and transport cost as a share of net wages for *employed* workers once commute time is
+priced in (57 per cent, exceeding 80 in the lowest quintile -- Shah and Sturzenegger 2024). None
+of these is quite the right object: the model's `c` is a search cost paid by the *unemployed*
+while searching, not a consumption share or a cost borne by people who already have the job. The
+moment used is the one closest to that concept, and the mismatch is stated explicitly in the
+calibration chapter rather than treated as if any of the three numbers were interchangeable.
+
+## Two citation corrections found before the literature-verification pass even ran
+
+Shah and Sturzenegger's paper is *South African Journal of Economics* 92(4), 549-580
+(DOI `10.1111/saje.12388`) -- an earlier reference list cited it without volume, issue or page
+numbers. And "Ebrahim et al. (2024)" is Ebrahim, A. and Pirttila, J. (2024), *Journal of
+Development Economics* 172 -- two named authors, and the finding is not the flat employment
+zero it's often shorthanded as: earnings and entry-into-employment effects are small but
+positive, overall employment doesn't move, and women's employment specifically rose. That
+gendered heterogeneity is worth having on hand directly from the primary source for the
+limitations chapter, rather than gesturing vaguely at "the empirical literature".

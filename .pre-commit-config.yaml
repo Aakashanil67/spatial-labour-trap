@@ -1,0 +1,27 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.7
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      - id: nbstripout
+
+  - repo: local
+    hooks:
+      - id: no-microdata
+        name: block restricted survey microdata
+        entry: python tools/hooks/check_no_microdata.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: no-ai-attribution
+        name: block AI-attribution trailers in commit messages
+        entry: python tools/hooks/check_commit_msg.py
+        language: system
+        stages: [commit-msg]

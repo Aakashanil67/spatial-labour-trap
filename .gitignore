@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Claude Code / agent tooling -- not portfolio content, see DECISIONS.md
+CLAUDE.md
+.claude/state.md
+.claude/session-log.md
+
+# Raw survey microdata -- DataFirst licence forbids redistribution. Never lift this rule;
+# see data/README.md and paper/notes/prompt-0.2-licence-check.md.
+data/raw/
+*.dta
+*.sav
+*.por
+*.zip
+
+# Large / regenerable artefacts -- see I4 in DECISIONS.md for exactly what stays committed
+results/cache/
+results/figures/
+notebooks/moments/*.html
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
