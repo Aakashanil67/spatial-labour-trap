@@ -211,6 +211,39 @@ the optimum uses a disjoint seed list, so the fit quality reported in the thesis
 on the exact seeds the optimiser was allowed to fit to. There's a test for the determinism
 itself: two evaluations of the loss at the same parameter vector return an identical float.
 
+## Two corrections to not-yet-built code, from reading McFadden and Pissarides directly
+
+Neither `calibrate.py` nor the firm's free-entry test exists yet (both are Week 2/4 work), so
+these are recorded now to guide that build rather than to fix anything already written.
+
+**The MSM weight matrix is inverse data variance plus simulation variance, not data variance
+alone.** The earlier plan (see the definitional-traps section below) said weight by inverse
+*data* sampling variance and let Monte Carlo variance decide only the seed count. McFadden
+(1989) decomposes total estimator variance into the data-sampling term *and* a separate
+simulation-variance term (p.1006) -- weighting by data variance alone implicitly assumes the
+simulation term is negligible. `calibrate.py` must either weight by the inverse of the *sum* of
+the empirical standard error and the simulation variance at the current seed count, or
+explicitly demonstrate the simulation term is negligible at 15/50 seeds and say so in the
+thesis. One of the two, stated plainly -- not silently assumed.
+
+**The free-entry test needs to test Pissarides's actual condition, not a proxy for it.** The
+plan for the firm heuristic's discipline check was "average expected profit net of posting cost
+tends to zero as kappa rises." Pissarides's job creation condition (2000, p.11-12) is
+`p - w = (r + lambda) * pc / q(theta)` -- it nets discounted profit against posting cost through
+the discount rate `r`, the separation rate `lambda`, and the vacancy-filling probability
+`q(theta)`. A heuristic that merely drives profit towards zero as `kappa` rises could pass that
+weaker test through pure market congestion without actually tracking free entry. When the firm
+heuristic is built (Week 2), the test needs `q(theta)`, `r`, and `lambda` in it, or the model
+chapter needs to say precisely which terms of the asset-value equation the heuristic represents
+and which it leaves out.
+
+**The calibration is exactly identified and that costs something.** Four free parameters, four
+moments, no slack for an overidentification test (McFadden's rank condition permits K = k, but
+offers no comfort about what's lost by it). The out-of-calibration validation against
+Banerjee and Sequeira's null result is the actual substitute for a formal overidentification
+check here, and the methodology chapter should say so explicitly rather than let an examiner
+notice the exact-identification on their own.
+
 ## `dmp.py` and locked commitment 1
 
 Chen's (2025) Appendix B system takes matching efficiency `a` as an input to solve for the
@@ -292,13 +325,75 @@ while searching, not a consumption share or a cost borne by people who already h
 moment used is the one closest to that concept, and the mismatch is stated explicitly in the
 calibration chapter rather than treated as if any of the three numbers were interchangeable.
 
-## Two citation corrections found before the literature-verification pass even ran
+## The distance_gradient_slope moment was sourced to a table that doesn't exist
 
-Shah and Sturzenegger's paper is *South African Journal of Economics* 92(4), 549-580
-(DOI `10.1111/saje.12388`) -- an earlier reference list cited it without volume, issue or page
-numbers. And "Ebrahim et al. (2024)" is Ebrahim, A. and Pirttila, J. (2024), *Journal of
-Development Economics* 172 -- two named authors, and the finding is not the flat employment
-zero it's often shorthanded as: earnings and entry-into-employment effects are small but
-positive, overall employment doesn't move, and women's employment specifically rose. That
-gendered heterogeneity is worth having on hand directly from the primary source for the
-limitations chapter, rather than gesturing vaguely at "the empirical literature".
+All fourteen papers on the reading list were deep-read end to end once the physical PDFs were
+in hand (`paper/notes/literature-verification.md` has the full report). The most consequential
+finding: `distance_gradient_slope` was documented above as "employment rate, percentage points
+per 10 km from the CBD, digitised from Baez and Kshirsagar (2026) Table 1" -- but Table 1 in
+that paper reports **population density** by kilometre band, not employment. The paper's actual
+employment result is a different object entirely: Table 5b regresses employment share on a
+**within-city, population-weighted percentile rank of network travel time** to the nearest
+business district, city-specific (Johannesburg 4.9, Cape Town 3.7, eThekwini 6.5 percentage
+points per 10 percentile points of that rank). Digitising Table 1 for this moment would have
+quietly calibrated the model against the wrong empirical object.
+
+Neither of the two obvious fixes is free. A genuine km-based gradient would need geography
+finer than District Council/Municipality level, which is the ceiling on every public-release
+file actually on disk (NIDS, QLFS, NHTS all bottom out there -- see the geography note above).
+So the moment is **redefined to match what Baez and Kshirsagar actually measure**: the model's
+own simulated agents are ranked by percentile of distance from the CBD within their own run
+(exactly analogous to the paper's within-city travel-time percentile rank), and the simulated
+moment is the slope of employment share on that percentile rank, in the same units the
+empirical target is reported in. `data/README.md`'s moment table reflects this.
+
+## Citation corrections, confirmed by reading the actual papers, not just searching for them
+
+Several corrections made earlier in this file from web search were provisional; the deep read
+confirmed some and corrected others. Recorded here so the two aren't conflated:
+
+- **Shah and Sturzenegger.** The earlier entry in this file cited *South African Journal of
+  Economics* 92(4), 549-580, DOI `10.1111/saje.12388` -- found by search, never confirmed
+  against an actual copy. The file on disk, and the file the IMF (2026) paper itself cites, is
+  **Sturzenegger and Shah (2022), CID Research Fellow and Graduate Student Working Paper No.
+  142, Harvard University**, October 2022. Cite the working paper until the SAJE offprint is
+  obtained and every page-specific number in it is re-verified against that version -- page
+  numbers do not carry over between a working paper and its eventual typeset journal version.
+- **The "80 per cent of net income" figure.** Confirmed misattributed. The IMF (2026) paper's
+  own text attributes it explicitly: "(Figure 2, Shah and Sturzenegger, 2022)" (IMF SIP
+  2026/018, p.4). The IMF did not originate this number; Sturzenegger and Shah (2022) did, and
+  the thesis should cite them, not "a 2026 IMF study."
+- **"Ebrahim et al. (2024)"** is Ebrahim, A. and Pirttila, J., *Journal of Development
+  Economics* 172, 103394 -- two named authors, not "et al." The finding is not a flat zero:
+  overall employment is near-zero, but that hides an **offsetting gender pattern** -- women's
+  employment rose 4.05 percentage points, men's fell 3.39 points (p.10), which the paper
+  attributes to wage incidence, not firms simply banking a windfall. A genderless ABM cannot
+  reproduce that specific mechanism; the model's distance and wealth cuts are a different
+  dimension of heterogeneity, not a substitute for it, and the limitations chapter should say
+  so plainly rather than gesturing at "the empirical literature."
+- **Von Fintel (2018)** and **Zenou (2009)** also had citation-detail errors (working-paper vs
+  published pagination for the former, a wrong title for the latter) -- full corrected
+  citations in `paper/notes/literature-verification.md` section 2.
+
+## The stated "gap" in the spatial search literature was partly backwards
+
+Thesis_Explainer_v2.pdf characterises Wasmer and Zenou (2002) and Zenou (2009) as assuming
+"uniform commuting distances." That's the opposite of what those papers do: heterogeneous
+commuting distance is the central state variable in both (Wasmer and Zenou 2002, p.520), and it
+is what generates each paper's headline result. An examiner who knows either paper would catch
+this immediately. The gap that actually survives scrutiny, and is worth quoting directly: these
+papers hold *search intensity* fixed, and Zenou (2009) explicitly assumes "perfect capital
+markets with a zero interest rate" (p.537) -- workers can smooth income over time without limit,
+which precludes any depletable household resource stock *by construction*, not by omission.
+That's a stronger, narrower, and more defensible claim than "uniform distances," and it's the
+one that should replace the current text.
+
+## Full literature verification report
+
+`paper/notes/literature-verification.md` has the complete deep-read of all fourteen papers:
+what each one actually says with page references, every quotable number and which ones are
+misattributed elsewhere, what's usable as a calibration input versus what has to come from the
+microdata directly, ten ranked methodological problems (including the matching-function
+simultaneity concern for SQ1's frictional-minus-frictionless differencing, and the MSM weight
+matrix choice against McFadden 1989's own variance decomposition), and an explicit assessment
+of where the thesis's contribution claim is narrower than currently phrased.

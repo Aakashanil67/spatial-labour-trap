@@ -25,7 +25,7 @@ One row per calibration target, each a single named scalar:
 
 | key | definition | source |
 |---|---|---|
-| `distance_gradient_slope` | employment rate, percentage points per 10 km from the CBD, OLS on published band midpoints | Baez and Kshirsagar (2026), WB WP 11285 -- digitised, not the R/Stata reproducibility package (see DECISIONS.md D6) |
+| `distance_gradient_slope` | employment share, percentage points per 10 *percentile points* of within-city travel-time rank to the nearest business district -- **not km-distance**, see DECISIONS.md | Baez and Kshirsagar (2026), WB WP 11285, Table 5b -- digitised, not the R/Stata reproducibility package (see D6) |
 | `discouraged_share` | StatsSA discouraged work-seeker definition: wants work, available, not searching because believes no jobs are available | QLFS |
 | `transport_budget_share` | see the definitional trap note in DECISIONS.md before trusting this number -- at least three published variants differ fourfold | NHTS |
 | `long_term_share` | share of the *currently unemployed* with in-progress spell duration >= 12 months | QLFS |
