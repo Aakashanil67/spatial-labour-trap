@@ -362,6 +362,21 @@ Solved with `scipy.optimize.least_squares` under bounds, not a bare `fsolve`, wh
 and will return a mathematically valid but economically nonsensical `l < 0` from a poor starting
 point without complaint.
 
+**Implemented and validated.** `dmp.py` transcribes Chen's own six-equation system (`w`,
+`lambda*l = q*v`, `q = a*theta^-phi`, `theta = v/u`, `l+u=1`, and the detailed job-creation
+condition) directly, treating `b` as a fixed rand-level parameter rather than re-deriving it as
+a moving fraction of whatever wage the solve produces, which Chen's own calibration procedure
+also does -- he sets `b = 0.6w` once, from a baseline steady-state `w`, then holds `b` fixed for
+later solves, not literally 0.6 times an endogenous `w` inside the same system (that would make
+the wage equation circular). The transcription is checked, not just run: feeding the solver
+Chen's own Table 1 parameters (`a = 0.471`, quarterly) recovers `theta = 0.781`, matching his
+own reported target of 0.78 to three decimal places. Chen calibrated `a` specifically so his
+system would produce that target, so an independent transcription landing on the same number is
+real evidence the six equations were copied correctly, not something either side could fake by
+having tuned `a` itself. Also confirmed: convergence at this thesis's own monthly-rebased
+parameters, robustness to a deliberately poor initial guess (same fixed point recovered to
+four decimal places), and determinism under repeated calls.
+
 ## The AR(1) productivity shock is rebased from quarterly to monthly, not copied
 
 Chen (2025) Table 1 reports `rho = 0.612` and `sigma = 0.0085` for the TFP process, sourced from

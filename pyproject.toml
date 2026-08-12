@@ -46,6 +46,12 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+# `l` is Chen (2025)'s own notation for employment, used identically in the paper's equations
+# this module transcribes -- matching the source is more useful for cross-checking than
+# renaming away from it would be.
+"src/dmp.py" = ["E741"]
+
 [tool.pytest.ini_options]
 markers = [
     "slow: statistical/seed-sweep tests that take minutes, run locally not in CI",
