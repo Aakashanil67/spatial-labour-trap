@@ -67,6 +67,13 @@ class Config:
     # negative) rather than a normal draw that would need truncating.
     initial_capital_spread: float = 0.0
 
+    # -- Week 2: moment burn-in (prompt 4.2 / the plan's "windows stated numerically"
+    # requirement). Steps <= burn_in_steps are excluded from every time-averaged moment, so
+    # the cold-start transient documented in DECISIONS.md never contaminates a calibration
+    # target. 0 keeps every step -- fine for a short MVM run, wrong for anything meant to
+    # calibrate against.
+    burn_in_steps: int = 0
+
     @classmethod
     def from_yaml(cls, path: str | Path) -> Config:
         with open(path, encoding="utf-8") as f:

@@ -10,7 +10,8 @@
 
 n_agents: 500
 n_vacancies: 15 # only used to seed each firm's initial vacancy count; ignored after step 1
-initial_search_capital: 0.6 # W0, homogeneous -- Week 4 draws it from NIDS net-worth data
+initial_search_capital: 0.6 # W0. Mean of the draw -- see initial_capital_spread below
+initial_capital_spread: 0.5 # coefficient of variation, lognormal -- prompt 3.1
 search_cost_per_trip: 0.02 # c -- flat/base component, see transport_cost_rate
 separation_rate: 0.0048 # lambda, monthly -- Miyamoto (2011)'s fallback; see DECISIONS.md
 belief_multiplier: 1.0 # beta = 1.0 is the unbiased baseline
@@ -42,3 +43,8 @@ discount_rate: 0.001332 # r, monthly -- rebased from Chen (2025)'s quarterly 0.0
 # AR(1) productivity shock (M2), rebased monthly from Chen (2025) Table 1 -- see DECISIONS.md
 rho_A: 0.849
 sigma_A: 0.0057
+
+# Moments (src/moments.py). The cold-start transient documented in DECISIONS.md settles by
+# roughly step 50 -- confirmed against this exact config's diagnostics figure -- so the first
+# 50 steps are excluded from every time-averaged moment.
+burn_in_steps: 50

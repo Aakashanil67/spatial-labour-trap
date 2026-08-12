@@ -291,10 +291,14 @@ class CityModel(Model):
         n_long_term = sum(1 for a in searching if a.months_in_state >= LONG_TERM_THRESHOLD_MONTHS)
         self._collect_cell_row(searching)
 
-        # 5. Trip decisions and payment (the intensity margin, M5).
+        # 5. Trip decisions and payment (the intensity margin, M5). transport_spend is what
+        #    moments.py's transport_budget_share moment sums over the burn-in window --
+        #    captured here, not recomputed later, because step_searching has already
+        #    decremented search_capital by the time this line runs.
         self._activate(searching, "step_searching")
         n_belief_inactive = sum(1 for a in searching if a.belief_inactive_this_step)
         total_trips = sum(a.trips_this_step for a in searching)
+        transport_spend = sum(a.trips_this_step * a.cost_per_trip for a in searching)
 
         # 6. Matching.
         if self.firms:
@@ -325,6 +329,7 @@ class CityModel(Model):
                 "n_new_discouraged": n_new_discouraged,
                 "n_belief_inactive": n_belief_inactive,
                 "mean_search_capital": mean_capital,
+                "transport_spend": transport_spend,
                 "productivity_shock": self.productivity_shock,
             }
         )
