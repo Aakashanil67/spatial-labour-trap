@@ -702,3 +702,46 @@ expects one `period` per moment, so the most recent quarter (2026 Q1, 13.43% +/-
 headline value; the full by-quarter series lives in the notebook as documented context. The
 model's AR(1) shock mean-reverts and has no drift term, so a moving empirical target is a real
 tension worth carrying into the Calibration chapter, not one this notebook resolves.
+
+## Week 3, notebook 02 -- transport_budget_share, the moment the plan itself flagged as fraught
+
+The plan's own definitional-trap note already warned that published transport-share figures
+differ fourfold and none of them is quite `c`. NHTS 2020 turns out to have a real, purpose-built
+question block for job-search travel specifically -- `Q46Lookwork`/`Q47Travlooking` identify
+4,655 of 145,385 respondents who travelled while looking for work -- but no codebook shipped
+with the initially-extracted CSVs, and the obvious cost variable was a trap of its own.
+`Q434bCost` is labelled "Vehicle cost to work place," a private-vehicle-specific field that's
+Not-applicable for 4,512 of those 4,655 people; the real costs live in `Q429b3Cost1` through
+`Q432b3Cost4`, one field per mode of travel actually used, on the question block matched to
+`Q47Travlooking`'s own numbering rather than an earlier, similarly-numbered block asking about
+the regular commute to an *existing* job. Getting that pairing wrong would have silently measured
+commuting costs for the employed instead of search costs for job seekers -- the plan's warned-of
+substitution, arrived at almost by accident before the labelled `.dta` file confirmed which block
+was which.
+
+**A unit mismatch that would have shipped a number an order of magnitude too small.** The NHTS
+cost fields are for a single reported travel day; `moments.py`'s `transport_budget_share()` is a
+per-model-step (roughly monthly) quantity. A first pass divided the day-level cost by a monthly
+wage directly and got 0.0049 -- nowhere near the 15-60 per cent range the plan's own trap note
+already flagged from other sources, which is exactly the kind of implausible result that should
+stop a computation before it's trusted, not after. Converting the wage to a daily rate (South
+Africa's conventional 21.7 working days per month) before dividing fixed it: 0.1058, in the same
+order of magnitude as the published comparators. The fix assumes job-search travel costs recur
+at roughly a daily rate when they happen at all -- not verified against a job-search-specific
+frequency question, because none exists in this survey, and stated as an assumption rather than
+buried in a default.
+
+**The wage benchmark comes from NHTS itself, in 2020 Rand, not a more recent QLFS figure.**
+Mixing a 2020 transport cost with a 2025/26 wage would need an inflation adjustment this notebook
+has no reason to introduce; using NHTS's own `Q410Salary` keeps both sides of the ratio on one
+survey and one year. The whole moment is therefore in 2020 terms -- a real limitation, not
+smoothed over, and one the Calibration chapter needs to name directly.
+
+**Standard error is bootstrapped, not closed-form.** The ratio combines two independently
+estimated quantities -- mean cost over 4,655 travellers, median wage over 20,867 earners -- so
+2,000 weighted resamples of both populations give 0.1058 +/- 0.0055 (95% CI 0.097-0.119) without
+needing to assume away the covariance a delta-method formula would have to ignore.
+
+This is now the second-most fragile moment after the SA separation rate still to come in
+notebook 03 (which needs its own panel construction). Flagged here explicitly should D7's
+provisional-at-freeze rule ever need to apply to it.

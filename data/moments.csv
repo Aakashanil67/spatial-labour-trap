@@ -1,5 +1,5 @@
 key,value,standard_error,period,source,provisional
 distance_gradient_slope,,,,Baez and Kshirsagar (2026) WB WP 11285 -- pending digitisation,True
 discouraged_share,0.1343,0.0023,2026-Q1,"Statistics South Africa. Quarterly Labour Force Survey 2026: Q1 [dataset]. Cape Town: DataFirst [distributor]. QLFS Status variable, expanded-labour-force denominator, person-weighted.",False
-transport_budget_share,,,,NHTS -- pending notebook 02,True
+transport_budget_share,0.1058,0.0055,2020,"Statistics South Africa. National Household Travel Survey 2020 [dataset]. Cape Town: DataFirst [distributor]. Job-search travel cost (Q429b3Cost1-Q432b3Cost4, conditional on Q47Travlooking=Yes) as a share of median monthly wage (Q410Salary), both person-weighted, wage converted to a daily rate at 21.7 working days/month. 2020 Rand terms -- see notebook 02 for the full methodology and its limitations.",False
 long_term_share,,,,QLFS -- pending notebook 03,True

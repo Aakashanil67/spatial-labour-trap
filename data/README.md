@@ -6,10 +6,10 @@ and their standard errors, computed from microdata that lives outside this repo.
 ## Getting the source data
 
 Register at [datafirst.uct.ac.za](https://www.datafirst.uct.ac.za). NIDS Wave 5 (2017), PALMS
-(1993-2025) and the QLFS files are public-release and download directly after registration --
-no separate approval wait, unlike the geo-coded NIDS extract, which needs an Accredited
-Researcher application and on-site access at UCT and is not used here. The National Household
-Travel Survey is published by StatsSA directly.
+(1993-2025), the QLFS files and the National Household Travel Survey (2020) are all public-release
+on DataFirst and download directly after registration -- no separate approval wait, unlike the
+geo-coded NIDS extract, which needs an Accredited Researcher application and on-site access at
+UCT and is not used here.
 
 Save everything to a folder **outside this repository**, e.g. `../thesis-data/`. Never inside
 `spatial-labour-trap/`. `configs/*.yaml` never points at it -- `Config` is the *simulation's*
@@ -20,7 +20,7 @@ shared or central to keep in sync.
 
 ## What the DataFirst licence permits publishing here
 
-Checked in `paper/notes/prompt-0.2-licence-check.md`: QLFS, PALMS and NIDS W5 are all
+Checked in `paper/notes/prompt-0.2-licence-check.md`: QLFS, PALMS, NIDS W5 and NHTS 2020 are all
 DataFirst's "Public use" tier (Creative Commons Attribution, CC-BY), which permits publishing
 derived aggregates -- shares, means, regression coefficients -- with attribution, no restriction
 beyond that. The restriction in this licence family is on redistributing the underlying

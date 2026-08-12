@@ -22,11 +22,14 @@ CC-BY (attribution-only), "Licensed" (non-commercial, CC-BY-NC) and Accredited-R
 (on-site SRDC access) are the two more restrictive tiers, and this thesis's data folder holds
 no file that required either. Treat this as inherited, not independently re-verified -- if
 NIDS W5's own catalogue page is ever checked directly and disagrees, this note is wrong until
-updated. NHTS 2020 is distributed by Statistics South Africa directly, not through DataFirst,
-and was not checked against a StatsSA licence page at all. It's treated here as public-release
-by the same convention QLFS uses, since both are StatsSA products -- an inference, not a
-confirmed citation. Flag this before publishing a number sourced only from NHTS, if that ever
-matters more than it currently does.
+updated.
+
+**Update, notebook 02:** NHTS 2020 turns out to be on DataFirst after all -- catalogue page
+datafirst.uct.ac.za/dataportal/index.php/catalog/886 (Statistics South Africa, catalogue entry
+`nhts-2020-v1`), listing "Access Conditions: Public access data, available to all," copyright
+held by Statistics South Africa. Confirmed directly, not inherited the way NIDS is above --
+the earlier version of this note treated NHTS as StatsSA-direct and untiered by inference; that
+was wrong, and it's now the same tier as QLFS and PALMS by direct catalogue check.
 
 ## What this means for what gets committed
 
