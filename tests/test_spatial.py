@@ -9,6 +9,7 @@ from dataclasses import replace
 
 import pytest
 
+from src.agents import Firm
 from src.config import Config
 from src.model import CityModel
 
@@ -97,6 +98,39 @@ def test_firms_never_permanently_locked_out():
     model.run()
     for firm in model.firms:
         assert firm.quiet_streak <= firm._EXPLORATION_PATIENCE
+
+
+def test_fill_probability_never_decays_below_its_floor():
+    """quiet_streak staying bounded (the test above) is true by construction even inside the
+    exact permanent-lockout scenario it's meant to rule out -- the streak resets every time the
+    exploration mechanism fires a token vacancy, whether or not that vacancy is ever filled.
+    Found by sweeping n_agents on configs/baseline.yaml: every firm's fill_prob_estimate
+    crashed to 0.000 and stayed there, total vacancies collapsed to near the exploration
+    floor's single trial posting, and unemployment approached 100 per cent -- see DECISIONS.md.
+    This checks the belief itself, not just the counter."""
+    cfg = replace(SPATIAL, n_agents=3300, seed=42)
+    model = CityModel(cfg)
+    model.run()
+    for firm in model.firms:
+        assert firm.fill_prob_estimate >= Firm._MIN_FILL_PROB
+
+
+def test_search_activity_does_not_permanently_freeze_at_scale():
+    """observed_hire_rate_per_trip's naive initial value is total initial vacancies divided by
+    n_agents, and decide_trips rounds a favourability score to a whole number of trips -- below
+    intensity 1/(2*max_trips_per_step), round() can only return zero. Because the observed rate
+    is deliberately left unchanged on an all-quiet step, a population whose typical perceived
+    rate starts below that threshold together used to freeze at zero trips for the rest of the
+    run, with no way to generate the observation that would correct it -- and a bigger
+    population made the freeze *more* likely, not less, since it only lowers the naive initial
+    rate further. n_agents has to actually be scaled up here, not just n_vacancies cut, or the
+    test passes even against the unfixed code -- checked directly against a stash of the
+    pre-fix decide_trips before trusting this. See DECISIONS.md."""
+    cfg = replace(SPATIAL, n_agents=3300, n_vacancies=1, seed=42)
+    model = CityModel(cfg)
+    history = model.run()
+    tail = history[history["step"] > history["step"].max() - 20]
+    assert tail["total_trips"].sum() > 0
 
 
 def test_matches_never_exceed_posted_vacancies_with_firms():

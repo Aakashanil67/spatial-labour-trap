@@ -104,7 +104,23 @@ class JobSeeker(Agent):
         agents who refuse to try at all from a shaky prior). Scaling means an agent at exactly
         break-even still searches at full intensity, and one who thinks the market is bad
         throttles down smoothly instead of refusing outright -- which is also what actually
-        lets a pessimistic prior get corrected by real experience."""
+        lets a pessimistic prior get corrected by real experience.
+
+        Rounding to an integer trip count reopens the same hole in a subtler place, though.
+        `round()` cannot return anything but 0 below intensity 1/(2*max_trips_per_step), which
+        is itself a hard cutoff wearing a continuous formula's clothes -- and because
+        `observed_hire_rate_per_trip` is deliberately left unchanged on an all-quiet step (see
+        model.py's step docstring, same reasoning as the discussion above), a population whose
+        typical perceived rate starts below that threshold together never generates the
+        observation that would correct it, and freezes at zero trips for the rest of the run.
+        Found by sweeping `n_agents` on configs/baseline.yaml (see DECISIONS.md): a bigger
+        population lowers `observed_hire_rate_per_trip`'s naive initial value (total initial
+        vacancies divided by a bigger denominator), so more searchers made a synchronised
+        freeze *more* likely, not less -- the opposite of realistic behaviour. Below-threshold
+        agents get one more chance at a trip anyway, with probability equal to the intensity
+        they were rounded away from -- the same idiosyncratic-noise logic already used above to
+        stop the whole population behaving identically, just applied at the rounding step
+        instead of the perception step."""
         cfg = self.model.config
         cost = self.cost_per_trip
         noise = self.model.rng.uniform(0.9, 1.1)
@@ -113,7 +129,10 @@ class JobSeeker(Agent):
             intensity = 1.0
         else:
             intensity = min(1.0, (perceived_rate * WAGE) / cost)
-        desired = round(cfg.max_trips_per_step * intensity)
+        scaled = cfg.max_trips_per_step * intensity
+        desired = round(scaled)
+        if desired == 0 and scaled > 0 and self.model.rng.uniform(0.0, 1.0) < scaled:
+            desired = 1
         affordable = int(self.search_capital // cost) if cost > 0 else cfg.max_trips_per_step
         return max(0, min(desired, affordable, cfg.max_trips_per_step))
 
@@ -186,6 +205,23 @@ class Firm(Agent):
     # same reasoning as the fill-probability learning rate below.
     _EXPLORATION_PATIENCE = 3
 
+    # Floor on the belief itself, not just on its starting value. Originally only the naive
+    # prior below was floored at 0.05; the EMA update had no floor, so a run of unlucky
+    # zero-hire exploration attempts could still walk the estimate down to a value so close to
+    # zero (0.7^n of the starting prior, compounding every quiet-then-explore cycle) that
+    # decide_vacancies's target permanently rounds to zero -- the exploration floor then keeps
+    # firing token vacancies that are themselves too unlikely to land a hire to ever pull the
+    # estimate back up. Caught by scanning configs/baseline.yaml across a range of n_agents
+    # (see DECISIONS.md): several seed/population combinations left every firm's estimate at
+    # 0.000 for the entire run, with total vacancies collapsing to essentially the exploration
+    # floor's single trial posting and unemployment approaching 100 per cent. Re-flooring the
+    # updated estimate at the same 0.05 used for the initial prior keeps `computed` at or above
+    # 1 under baseline economics (target = kappa * (0.05 * expected_value_per_hire - c_post)
+    # rounds to 1 at baseline's parameters), so the firm gets a real vacancy -- and therefore a
+    # real chance at a fresh observation -- every period rather than only once per exploration
+    # window.
+    _MIN_FILL_PROB = 0.05
+
     def __init__(self, model, x: float, y: float, initial_vacancies: int = 0):
         super().__init__(model)
         self.x = x
@@ -200,7 +236,7 @@ class Firm(Agent):
         # never posts one, a permanent no-vacancy deadlock with no way out.
         cfg = model.config
         area_fraction = min(1.0, (cfg.firm_radius / max(cfg.grid_size, 1)) ** 2)
-        self.fill_prob_estimate = max(0.05, min(1.0, area_fraction))
+        self.fill_prob_estimate = max(self._MIN_FILL_PROB, min(1.0, area_fraction))
 
     def decide_vacancies(self) -> None:
         """Set this period's vacancy count from expected profit per hire, discounted the way
@@ -248,9 +284,12 @@ class Firm(Agent):
         them gets its belief set to exactly 0.0, which then implies negative expected profit
         forever -- a single unlucky draw permanently kills the firm, with no path back to a
         new observation, the same structural failure as the Week 1 zero-search deadlock but
-        arrived at through bad luck instead of a bad prior. Smoothing means one bad period
-        pulls the estimate down without being able to zero it out completely."""
+        arrived at through bad luck instead of a bad prior. Smoothing stops any one period from
+        zeroing the estimate out in a single step, but a run of consecutive zero-hire periods
+        can still walk it down asymptotically -- the floor at `_MIN_FILL_PROB` is what actually
+        stops it arriving, not the smoothing alone."""
         if self.vacancies > 0:
             observed = self.hires_this_step / self.vacancies
             rate = self._FILL_PROB_LEARNING_RATE
-            self.fill_prob_estimate = (1 - rate) * self.fill_prob_estimate + rate * observed
+            updated = (1 - rate) * self.fill_prob_estimate + rate * observed
+            self.fill_prob_estimate = max(self._MIN_FILL_PROB, updated)

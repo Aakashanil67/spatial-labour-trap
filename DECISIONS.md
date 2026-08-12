@@ -313,6 +313,64 @@ Economically, the floor is defensible on its own terms, not just as a numerical 
 firms have some baseline replacement hiring from ordinary attrition even in a bad period, so a
 small amount of forced exploration isn't unrealistic on top of being necessary.
 
+## The earlier firm-lockout fix wasn't actually verified, and a second, separate deadlock was hiding behind it
+
+Found while trying to build the scarce-vacancy smoke test config: sweeping `n_agents` on
+`configs/baseline.yaml` from 500 up to 5,000 turned up a sharp, non-monotonic collapse. At the
+same seed, `n_agents=3,200` ran fine, labour market tightness falling smoothly as expected;
+`n_agents=3,250`, `3,300` and `3,350` -- population otherwise unchanged -- ended the run at
+effectively 100 per cent unemployment, zero matches for the entire post-burn-in window; `3,400`
+recovered again. That's not what a scarcity gradient looks like -- it's a cliff, and a cliff
+meant something was actually broken, not just economically severe.
+
+Two distinct bugs were sitting behind it, and the first one exposed how weak the existing
+regression coverage for the previous fix actually was. `test_firms_never_permanently_locked_out`
+asserts `quiet_streak <= _EXPLORATION_PATIENCE`, and that assertion is true by construction: the
+streak resets to zero every time the exploration mechanism fires a token vacancy, whether or not
+that vacancy is ever filled. A firm can sit in "post one vacancy, it goes unfilled, streak resets,
+repeat" forever and this test would still pass. The actual failure at scale: `fill_prob_estimate`
+can decay asymptotically towards zero across many consecutive zero-hire exploration attempts --
+smoothing stops any *single* period from zeroing it out, exactly as the earlier fix intended, but
+says nothing about the limit of repeated small decays. Once the estimate is negligibly small, the
+formula `kappa * (fill_prob * expected_value_per_hire - c_post)` is dominated by the `-c_post`
+term regardless of `expected_value_per_hire`, and rounds to zero every period except the rare
+exploration window -- and if that window's own single vacancy also goes unfilled, which becomes
+likely exactly when the firm needed it most, nothing ever pulls the estimate back up. Fixed by
+flooring the *updated* estimate at the same 0.05 already used for the naive initial prior
+(`Firm._MIN_FILL_PROB`), not just the starting value -- the asymmetry between an initial floor and
+an unfloored update was the actual gap. At baseline's economics this keeps the computed target at
+or above one most periods, so a firm gets a real chance at a fresh observation continuously rather
+than once every three quiet periods.
+
+The second bug was independent and, on its own, sufficient to explain the cliff. `decide_trips`
+scales search intensity continuously, by design, specifically to avoid a hard "worth it or not"
+cutoff -- but `desired = round(max_trips_per_step * intensity)` reintroduces exactly that cutoff:
+`round()` cannot return anything but zero below intensity `1/(2 * max_trips_per_step)`. And
+`observed_hire_rate_per_trip`'s naive initial value is total initial vacancies divided by
+`n_agents` -- correct as a first guess, but it means a bigger population starts with a *lower*
+perceived hire rate, not a higher one, purely from the bigger denominator. Once the population's
+typical intensity starts below that rounding threshold, every agent's `desired` trip count rounds
+to zero on the very first step, `total_trips` is zero, and `observed_hire_rate_per_trip` -- left
+deliberately unchanged on an all-quiet step, so a temporary lull can't be mistaken for a
+permanently dead market -- never gets the observation that would correct it. The market freezes
+at zero search activity for the rest of the run. This inverts the intuition a bigger population
+should produce: more searchers made the synchronised freeze *more* likely, not less, because
+it only ever lowered the shared starting belief. Fixed with the same idiosyncratic-noise logic
+`decide_trips` already uses to stop the population behaving identically: when rounding would send
+`desired` to zero but the underlying intensity is positive, the agent still gets one trip with
+probability equal to that intensity, rather than being deterministically rounded down alongside
+everyone else. Checked this doesn't touch `configs/mvm.yaml`'s regression before relying on it --
+instrumented the boundary condition directly and confirmed it fires zero times across a full MVM
+run (7,718 `decide_trips` calls), so the byte-identical MVM numbers this file has re-verified
+after every commit this session are untouched; it fires 442 times out of 2,310 calls on
+`configs/baseline.yaml`, which is exactly the config this bug lived in.
+
+Both fixes are now backed by tests that actually exercise the failure, not just the mechanism
+that was supposed to prevent it -- checked directly against a stash of the pre-fix code to
+confirm each one fails without the fix and passes with it, rather than trusting that by
+inspection alone, which is exactly the mistake that let the first fix's coverage gap through
+undetected for a full session.
+
 ## Two corrections to not-yet-built code, from reading McFadden and Pissarides directly
 
 Neither `calibrate.py` nor the firm's free-entry test exists yet (both are Week 2/4 work), so
