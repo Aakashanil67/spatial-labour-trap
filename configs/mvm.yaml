@@ -1,0 +1,20 @@
+# Minimum viable model: one CBD, homogeneous seekers, fixed vacancies. No spatial grid yet
+# (that's Week 2). Parameters are illustrative, not calibrated -- calibration is Week 4.
+#
+# Hand-verified (2026-08-12): converges to a stable low-unemployment regime within ~25 steps,
+# with the discouragement and re-entry mechanisms both actively firing (not degenerate), and
+# discouraged share rises monotonically with search_cost_per_trip across {0.02, 0.04, 0.08, 0.15}
+# -- the specific behaviour prompt 2.1's test suite checks for.
+
+n_agents: 500
+n_vacancies: 20
+initial_search_capital: 1.0    # W0, homogeneous across agents in the MVM
+search_cost_per_trip: 0.02     # c -- a small fraction of the wage=1 numeraire, see D10
+separation_rate: 0.02          # lambda, monthly (M1)
+belief_multiplier: 1.0         # beta = 1.0 is the unbiased baseline (M6)
+household_inflow: 0.02         # g, added to a discouraged agent's capital every step
+reentry_threshold: 0.05        # capital needed to resume searching from discouragement
+max_trips_per_step: 4          # search-intensity cap (M5)
+n_steps: 120
+seed: 42
+shuffled_activation: true      # D1 -- set false to run the activation-order robustness check

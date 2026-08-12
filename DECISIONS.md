@@ -45,6 +45,24 @@ biases *where* trips get targeted -- towards locations the agent (wrongly) belie
 promising. That's mistargeted search, which is the actual mechanism Banerjee and Sequeira (2023)
 point to for their null result, and it isn't collinear with a price.
 
+## The MVM's cold-start transient rings before it settles, and that's left in, not smoothed over
+
+`configs/mvm.yaml`'s diagnostics figure (`results/figures/diagnostics.png`) shows unemployment
+collapsing from 100 per cent at t=0 through a visible damped oscillation -- discouraged share
+spikes past 40 per cent around step 15, decays in a ringing pattern, and only settles to a
+stable ~2 per cent by roughly step 50. The idiosyncratic perception noise added to `decide_trips`
+(see D2's implementation note in `agents.py`) breaks the worst of the all-search/no-search
+synchrony a fully homogeneous population would otherwise show, but doesn't eliminate a residual
+population-level echo: enough agents still update their belief off the same shared backward-
+looking rate that a batch of them swing together for a few cycles before idiosyncratic noise and
+the spread of individual capital levels desynchronise them fully. It's a real, reproducible
+feature of a homogeneous-agent cold start, not a bug -- and it's exactly the kind of pathology
+prompt 2.2 exists to surface before more complexity gets added on top of it. Every reported
+moment in this repo excludes the transient (the tail-window convention in `src/run.py` and the
+sweep/calibration code once built), so it doesn't contaminate any calibrated number, but it's
+left visible in the figure rather than cropped out, because it's informative about the model's
+own dynamics and worth being able to explain in a viva.
+
 ## D3 -- Cell aggregates, not agent panels, keyed on the initial wealth draw
 
 Per-agent panels at N=5,000 seekers x T=120 months x 100 seeds is on the order of 60 million rows
