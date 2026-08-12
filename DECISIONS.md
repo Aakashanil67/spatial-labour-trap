@@ -505,6 +505,47 @@ which precludes any depletable household resource stock *by construction*, not b
 That's a stronger, narrower, and more defensible claim than "uniform distances," and it's the
 one that should replace the current text.
 
+## `trace_agent_ids` and the single-agent trajectory figure
+
+Locked commitment 6 says discouragement is not absorbing. Every test in `test_model.py` and
+`test_spatial.py` checks that fact numerically, but a reviewer -- or an examiner in a viva --
+should be able to see it happen to one agent, not just trust an aggregate share that never
+quite reaches zero. `config.py` gained `trace_agent_ids: tuple[int, ...] = ()`: a full per-step
+panel (`state`, `search_capital`, `months_in_state`, `trips_this_step`, `distance_to_cbd`), but
+only for the handful of agents named, never the whole population -- D3 already rejected an
+agent-level panel as a calibration structure, and this isn't one; it's a demonstration prop, off
+by default and fixed-size even when on.
+
+**Timing is deliberately the opposite of D11.** D11 records `u_t` and `v_t` before the matching
+call runs, so the matching-function regressor isn't contaminated by that period's own outcome.
+The trace records *after* matching, on purpose: it exists to show what happened to the agent
+that step. Sometimes that's a re-entry that leads straight to a hire, recorded in the same row.
+Recording it pre-matching would show the agent as still `DISCOURAGED` on the step it actually got hired,
+which is a worse demonstration of the mechanism, not a more consistent one. The two conventions
+serve different purposes and neither is wrong for its own use.
+
+**Finding an agent worth showing took a scan, not a guess.** A bespoke low-vacancy config was
+tried first and produced almost no state transitions at all (195 of 200 agents never left
+`SEARCHING` across the run) -- too degenerate to demonstrate anything. `configs/baseline.yaml`'s
+own already-validated parameters, at `n_agents=200`, were instead run across seeds 1 to 14 with
+every agent traced temporarily, and each agent's full state history inspected. Seed 5, agent 32,
+lives through five complete `SEARCHING -> DISCOURAGED -> SEARCHING/EMPLOYED` cycles in 150
+steps: capital drains while searching, the reentry threshold is approached from below while
+discouraged (refilled only by the household inflow), then the agent re-enters. `configs/trace_demo.yaml`
+pins that exact seed and agent id, with the scan method recorded in its header comment so it
+doesn't read as an arbitrary choice.
+
+`diagnostics.py` gained `plot_agent_trajectory()`: search capital as a black line, with the
+agent's state shaded as a background span per period so state changes are visible without a
+second line competing for attention. Run via
+`python -m src.diagnostics --config configs/trace_demo.yaml --trace-agent 32`.
+
+One thing the trace tests caught: firms are created before job-seekers in `CityModel.__init__`,
+so with `n_firms` firms present, unique ids 1 through `n_firms` belong to firms and seeker ids
+start only after that. A first draft of the tests named seeker ids by guessing small numbers and
+silently picked up firms instead, so the trace came back empty. The fixed version probes a throwaway
+model of the same config for its actual seeker ids rather than assuming an offset.
+
 ## Full literature verification report
 
 `paper/notes/literature-verification.md` has the complete deep-read of all fourteen papers:

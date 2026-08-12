@@ -1,0 +1,43 @@
+# Same parameters as configs/baseline.yaml, at a smaller N and a seed picked (by scanning
+# seeds 1-14 and checking every agent's full state history) specifically because agent 32
+# lives through five full search -> discouraged -> replenish -> re-entry -> hire cycles in
+# 150 steps -- the clearest available demonstration that locked commitment 6 (discouragement
+# is not absorbing) is actually implemented, not just asserted in a comment.
+#
+# python -m src.diagnostics --config configs/trace_demo.yaml --trace-agent 32
+
+n_agents: 200
+n_vacancies: 15
+initial_search_capital: 0.6
+initial_capital_spread: 0.5
+search_cost_per_trip: 0.02
+separation_rate: 0.0048
+belief_multiplier: 1.0
+household_inflow: 0.008
+reentry_threshold: 0.035
+max_trips_per_step: 3
+n_steps: 150
+seed: 5
+shuffled_activation: true
+
+grid_size: 40
+cbd_radius: 2.0
+n_townships: 4
+township_distance_min: 8.0
+township_distance_max: 20.0
+township_spread: 2.0
+transport_cost_rate: 0.004
+n_distance_bands: 4
+
+n_firms: 5
+firm_radius: 2.5
+firm_productivity: 1.2
+firm_posting_cost: 0.1
+firm_kappa: 0.9
+discount_rate: 0.001332
+
+rho_A: 0.849
+sigma_A: 0.0057
+burn_in_steps: 50
+
+trace_agent_ids: [32]

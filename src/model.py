@@ -75,6 +75,10 @@ class CityModel(Model):
         # what the Week 5 heterogeneity cuts and the actual calibration target (the stock-based
         # long-term share, computed fresh each step from currently-searching agents) both read.
         self.cell_history: list[dict] = []
+        # D3's per-agent trace: a full per-step panel, but only for the handful of agents
+        # named in config.trace_agent_ids -- fixed and tiny even at N=5,000, never the
+        # population panel D3 explicitly rejected.
+        self.trace_history: list[dict] = []
 
         self._township_centres = self._draw_township_centres()
         self.firms: list[Firm] = self._create_firms()
@@ -89,6 +93,8 @@ class CityModel(Model):
                 home_y=home_y,
                 wealth_quartile=quartile,
             )
+        traced_ids = set(config.trace_agent_ids)
+        self._traced_agents = [a for a in self._seekers() if a.unique_id in traced_ids]
 
     # -- Agent-set filtering ---------------------------------------------------------------
 
@@ -334,6 +340,23 @@ class CityModel(Model):
             }
         )
 
+        # Deliberately post-matching, not the D11 pre-matching convention the aggregate
+        # history uses -- this is a narrative trace, not a calibration input, and a step
+        # where an agent gets hired should show state=EMPLOYED at that step, not SEARCHING.
+        if self._traced_agents:
+            for agent in self._traced_agents:
+                self.trace_history.append(
+                    {
+                        "step": self.steps,
+                        "unique_id": agent.unique_id,
+                        "state": agent.state.name,
+                        "search_capital": agent.search_capital,
+                        "months_in_state": agent.months_in_state,
+                        "trips_this_step": agent.trips_this_step,
+                        "distance_to_cbd": agent.distance_to_cbd,
+                    }
+                )
+
     def _match_flat_pool(self, searching, v_t: int) -> int:
         """Week 1's aggregate lottery, unchanged: one ticket per trip, draw min(V, distinct
         candidates) hires without replacement, deduplicated by agent. No equation here says
@@ -454,3 +477,8 @@ class CityModel(Model):
         for bucket, count in censored_counts.items():
             rows.append({"bucket": labels[bucket], "censored": True, "count": count})
         return pd.DataFrame(rows)
+
+    def trace_dataframe(self) -> pd.DataFrame:
+        """The per-agent panel for whichever ids are named in config.trace_agent_ids. Empty
+        if none were named -- the trace is opt-in, see the field's docstring in config.py."""
+        return pd.DataFrame(self.trace_history)

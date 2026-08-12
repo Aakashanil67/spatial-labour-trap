@@ -74,6 +74,14 @@ class Config:
     # calibrate against.
     burn_in_steps: int = 0
 
+    # -- Week 2: per-agent tracing (D3). Off by default (empty tuple, fixed and tiny even when
+    # set) -- a full per-step panel for a HANDFUL of named agents, not the population panel D3
+    # rejected. This is what the single-agent trajectory figure comes from, and it's what gets
+    # narrated to prove locked commitment 6 (discouragement is not absorbing) is actually
+    # implemented rather than asserted in a comment. A tuple, not a list, so it stays hashable
+    # for the run cache's canonical JSON.
+    trace_agent_ids: tuple[int, ...] = ()
+
     @classmethod
     def from_yaml(cls, path: str | Path) -> Config:
         with open(path, encoding="utf-8") as f:

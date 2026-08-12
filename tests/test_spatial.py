@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from src.config import Config
 from src.model import CityModel
 
@@ -211,3 +213,39 @@ def test_extreme_scarcity_produces_a_fully_censored_long_spell():
     )
     history = CityModel(cfg).run()
     assert history["n_long_term"].iloc[-1] > 0
+
+
+def test_trace_is_empty_when_no_agents_are_named():
+    model = CityModel(MVM)  # trace_agent_ids defaults to ()
+    model.run()
+    assert model.trace_dataframe().empty
+
+
+def _first_seeker_ids(cfg: Config, n: int) -> tuple[int, ...]:
+    """Firms are created before JobSeekers (see model.py), so seeker unique_ids start after
+    n_firms, not at 1 -- probe a throwaway model of the same config rather than hardcode the
+    offset, so this stays correct if SPATIAL's firm count ever changes."""
+    probe = CityModel(cfg)
+    return tuple(sorted(a.unique_id for a in probe._seekers())[:n])
+
+
+def test_trace_records_only_the_named_agents_every_step():
+    ids = _first_seeker_ids(SPATIAL, 3)
+    cfg = replace(SPATIAL, trace_agent_ids=ids)
+    model = CityModel(cfg)
+    history = model.run()
+    trace = model.trace_dataframe()
+    assert set(trace["unique_id"].unique()) == set(ids)
+    assert len(trace) == 3 * len(history)  # one row per traced agent per step, no gaps
+
+
+def test_traced_agent_state_matches_the_live_agent_at_run_end():
+    (agent_id,) = _first_seeker_ids(SPATIAL, 1)
+    cfg = replace(SPATIAL, trace_agent_ids=(agent_id,))
+    model = CityModel(cfg)
+    model.run()
+    trace = model.trace_dataframe()
+    last_row = trace[trace["unique_id"] == agent_id].sort_values("step").iloc[-1]
+    live_agent = next(a for a in model._seekers() if a.unique_id == agent_id)
+    assert last_row["state"] == live_agent.state.name
+    assert last_row["search_capital"] == pytest.approx(live_agent.search_capital)

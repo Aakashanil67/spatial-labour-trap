@@ -47,6 +47,54 @@ def plot_diagnostics(history: pd.DataFrame, n_agents: int, title: str = "") -> p
     return fig
 
 
+_STATE_COLOURS = {
+    "SEARCHING": "#c6e6c6",
+    "DISCOURAGED": "#f6c6c6",
+    "EMPLOYED": "#c6d6f6",
+}
+
+
+def plot_agent_trajectory(trace: pd.DataFrame, agent_id: int, title: str = "") -> plt.Figure:
+    """Locked commitment 6 (discouragement is not absorbing) as a picture, not just an
+    assertion in a config comment -- search capital draining while SEARCHING, hitting the
+    hard DISCOURAGED state, refilling from the household inflow while discouraged, and
+    re-entering. State bands are shaded background spans, not a second line, so the capital
+    trajectory itself stays the clearest thing in the figure."""
+    g = trace[trace["unique_id"] == agent_id].sort_values("step")
+    if g.empty:
+        raise ValueError(f"agent {agent_id} not found in trace -- check config.trace_agent_ids")
+
+    fig, ax = plt.subplots(figsize=(11, 4))
+    steps = g["step"].to_numpy()
+    states = g["state"].to_numpy()
+
+    # Collapse consecutive identical states into spans so each transition gets exactly one
+    # axvspan call, not one per step -- a run of 40 EMPLOYED steps is one coloured block.
+    span_start = steps[0]
+    for i in range(1, len(states) + 1):
+        if i == len(states) or states[i] != states[i - 1]:
+            span_end = steps[i] if i < len(states) else steps[-1] + 1
+            ax.axvspan(
+                span_start, span_end, color=_STATE_COLOURS.get(states[i - 1], "#eeeeee"), alpha=0.6
+            )
+            if i < len(states):
+                span_start = steps[i]
+
+    ax.plot(steps, g["search_capital"], color="black", linewidth=1.5)
+    ax.set_xlabel("step (month)")
+    ax.set_ylabel("search capital")
+    ax.set_ylim(bottom=0)
+    handles = [
+        plt.Rectangle((0, 0), 1, 1, color=colour, alpha=0.6) for colour in _STATE_COLOURS.values()
+    ]
+    ax.legend(handles, _STATE_COLOURS.keys(), loc="upper right", framealpha=0.9)
+    ax.set_title(
+        title or f"Agent {agent_id}: search capital through search, discouragement, re-entry"
+    )
+    fig.tight_layout()
+    return fig
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Produce the four-panel diagnostics figure.")
     parser.add_argument("--config", required=True, help="path to a YAML config file")
@@ -55,16 +103,38 @@ def main(argv: list[str] | None = None) -> int:
         default="results/figures/diagnostics.png",
         help="output path for the figure (default: results/figures/diagnostics.png)",
     )
+    parser.add_argument(
+        "--trace-agent",
+        type=int,
+        default=None,
+        help="also produce the single-agent trajectory figure for this agent id "
+        "(must be in config.trace_agent_ids)",
+    )
+    parser.add_argument(
+        "--trace-out",
+        default="results/figures/agent_trajectory.png",
+        help="output path for the trajectory figure",
+    )
     args = parser.parse_args(argv)
 
     config = Config.from_yaml(args.config)
-    history = CityModel(config).run()
+    model = CityModel(config)
+    history = model.run()
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig = plot_diagnostics(history, config.n_agents, title=Path(args.config).stem)
     fig.savefig(out_path, dpi=150)
     print(f"wrote {out_path}")
+
+    if args.trace_agent is not None:
+        trace = model.trace_dataframe()
+        trace_fig = plot_agent_trajectory(trace, args.trace_agent)
+        trace_out = Path(args.trace_out)
+        trace_out.parent.mkdir(parents=True, exist_ok=True)
+        trace_fig.savefig(trace_out, dpi=150)
+        print(f"wrote {trace_out}")
+
     return 0
 
 
