@@ -1,0 +1,44 @@
+# The Week 2 spatial baseline: real geography, endogenous firms, an AR(1) productivity shock.
+# Parameters are illustrative, not calibrated -- calibration is Week 4. separation_rate and
+# rho_A/sigma_A are the documented values from DECISIONS.md (Miyamoto's monthly fallback;
+# Chen 2025's AR(1) rebased from quarterly to monthly), not arbitrary.
+#
+# Hand-verified (2026-08-12): converges to a low-unemployment, moderately scarce-vacancy
+# regime with discouraged share responding to search_cost_per_trip (roughly 3-5% discouraged
+# across c in [0.01, 0.05]); no firm ever gets permanently locked out of posting (the
+# exploration-floor fix in agents.py); population conserved with firms present.
+
+n_agents: 500
+n_vacancies: 15 # only used to seed each firm's initial vacancy count; ignored after step 1
+initial_search_capital: 0.6 # W0, homogeneous -- Week 4 draws it from NIDS net-worth data
+search_cost_per_trip: 0.02 # c -- flat/base component, see transport_cost_rate
+separation_rate: 0.0048 # lambda, monthly -- Miyamoto (2011)'s fallback; see DECISIONS.md
+belief_multiplier: 1.0 # beta = 1.0 is the unbiased baseline
+household_inflow: 0.008 # g
+reentry_threshold: 0.035
+max_trips_per_step: 3
+n_steps: 150
+seed: 42
+shuffled_activation: true
+
+# Spatial grid
+grid_size: 40
+cbd_radius: 2.0
+n_townships: 4
+township_distance_min: 8.0
+township_distance_max: 20.0
+township_spread: 2.0
+transport_cost_rate: 0.004 # rand per grid-unit distance per trip, on top of search_cost_per_trip
+n_distance_bands: 4
+
+# Endogenous firms (M4)
+n_firms: 5
+firm_radius: 2.5 # rho
+firm_productivity: 1.2 # p
+firm_posting_cost: 0.1 # c_post
+firm_kappa: 0.9 # posting sensitivity
+discount_rate: 0.001332 # r, monthly -- rebased from Chen (2025)'s quarterly 0.004
+
+# AR(1) productivity shock (M2), rebased monthly from Chen (2025) Table 1 -- see DECISIONS.md
+rho_A: 0.849
+sigma_A: 0.0057

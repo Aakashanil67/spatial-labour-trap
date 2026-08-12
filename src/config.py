@@ -17,9 +17,9 @@ import yaml
 @dataclass(frozen=True)
 class Config:
     n_agents: int
-    n_vacancies: int
+    n_vacancies: int  # MVM fixed-pool mode when n_firms == 0; ignored otherwise (see n_firms)
     initial_search_capital: float  # W0. Homogeneous across agents in the MVM (Week 2 draws it).
-    search_cost_per_trip: float  # c
+    search_cost_per_trip: float  # c -- the flat/base component; see transport_cost_rate
     separation_rate: float  # lambda, monthly probability an employed agent is separated (M1)
     belief_multiplier: float  # beta -- biases perceived offer rate away from the observed one (M6)
     household_inflow: float  # g, added to a discouraged agent's capital every step
@@ -28,6 +28,37 @@ class Config:
     n_steps: int
     seed: int
     shuffled_activation: bool = True  # D1 robustness switch: shuffled vs fixed activation order
+
+    # -- Week 2: spatial grid. All default to values that collapse to the MVM's single-CBD-cell
+    # behaviour (everyone at distance 0), so configs/mvm.yaml is unaffected and stays a genuine
+    # regression test -- see the design note in DECISIONS.md.
+    grid_size: int = 1  # city width/height in grid units
+    cbd_radius: float = 0.5  # radius of the CBD zone around the grid centre
+    n_townships: int = 0  # 0 = no spatial draw; every agent's home is the CBD centre
+    township_distance_min: float = 0.0  # min distance from CBD centre for a township cluster
+    township_distance_max: float = 0.0  # max distance from CBD centre for a township cluster
+    township_spread: float = 0.0  # std dev of home draws around their township's centre
+    # rand per grid-unit distance per trip, on top of search_cost_per_trip
+    transport_cost_rate: float = 0.0
+    n_distance_bands: int = 4  # for the D3 cell collector; irrelevant when n_townships == 0
+
+    # -- Week 2: endogenous firm vacancy posting (M4). n_firms == 0 keeps the MVM's flat
+    # fixed-vacancy-pool behaviour; n_firms > 0 switches to real Firm agents.
+    n_firms: int = 0
+    firm_radius: float = 0.0  # rho -- neighbourhood matching radius, deliberately not "rho_A"
+    firm_productivity: float = 1.0  # p, scaled by the AR(1) shock A_t each step
+    firm_posting_cost: float = 0.0  # c_post, per vacancy posted
+    firm_kappa: float = 0.0  # posting sensitivity; 0 keeps vacancies at their initial count
+    # r, monthly. Rebased from Chen (2025)'s quarterly 0.004 via (1 + r_q) = (1 + r_m)^3 -- see
+    # DECISIONS.md's AR(1)/separation-rate note for the same monthly-vs-quarterly convention
+    # applied consistently across every borrowed parameter.
+    discount_rate: float = 0.001332
+
+    # -- Week 2: AR(1) aggregate productivity shock (M2). Deliberately named rho_A/sigma_A, not
+    # rho/sigma, so the calibration optimiser can never conflate shock persistence with the
+    # firm's neighbourhood radius -- see DECISIONS.md.
+    rho_A: float = 0.0  # persistence; 0 = no persistence (degenerate constant productivity)
+    sigma_A: float = 0.0  # shock std dev; 0 = no shock (deterministic productivity = 1)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> Config:

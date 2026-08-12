@@ -229,6 +229,63 @@ the optimum uses a disjoint seed list, so the fit quality reported in the thesis
 on the exact seeds the optimiser was allowed to fit to. There's a test for the determinism
 itself: two evaluations of the loss at the same parameter vector return an identical float.
 
+## D13 -- Plain coordinates for the spatial grid, not Mesa's Cell/CellAgent API
+
+Mesa 3.5.1 has a real grid system (`mesa.discrete_space`: `OrthogonalMooreGrid`, `CellAgent`,
+`Cell` objects with neighbourhood queries). The model doesn't use it. Every economically
+load-bearing thing the spec asks for -- a home location, a distance from home to the CBD, a
+neighbourhood-radius query for which searchers a firm can hire from -- is fully delivered by a
+plain `(x, y)` float pair per agent and Euclidean distance, and agents never move cell-to-cell
+during a run (home is drawn once at initialisation and fixed, matching D3's "initial, not
+current" rule). Mesa's grid machinery is built for agents that traverse the grid step by step
+and query literal cell neighbours; adopting it here would mean learning and testing a second,
+unfamiliar API surface (on top of the Mesa 3.5.1 discrete-event surprise already hit once in
+Week 1) to get an abstraction the model doesn't need. "Spatially explicit" means agents have
+real positions and real spatial relationships drive costs and matching, not that the
+implementation has to route through Mesa's specific spatial classes.
+
+## D2, closed out -- search positions as the spatial half of the targeting bias
+
+D2 (Week 1) implemented `beta` as a bias on the agent's *perceived offer rate* and noted the
+*targeting* half -- biasing *where* an agent searches, not just how hard -- needed the spatial
+grid to mean anything. It's implemented now as `JobSeeker.search_positions()`: each trip an
+agent makes generates an effective search position, drawn within a disk of radius
+`cbd_radius * beta` around the CBD centre. An unbiased agent (`beta = 1`) draws uniformly
+within the CBD zone, which is exactly where firms are placed, so an unbiased agent's trips
+land where the real vacancies are by construction. A biased agent's effective radius is scaled
+by `beta` -- overconfident agents (`beta > 1`) wander further from the centre than the CBD zone
+actually extends and miss firms clustered nearer the middle; underconfident agents
+(`beta < 1`) stay too close in and miss firms scattered towards the zone's edge. Either
+direction shrinks the overlap between the agent's search and where the vacancies actually are,
+without the agent ever being told the true firm locations -- which is the actual mechanism
+behind "mistargeted search" (Banerjee and Sequeira 2023), not a disguised price effect.
+
+## The firm can get permanently locked out of posting, and needed its own exploration floor
+
+Caught in testing a 10-firm spatial config, not anticipated in design: a firm whose computed
+vacancy target rounds to zero posts nothing that period, and `update_fill_probability`'s
+quiet-period rule (correctly) leaves its belief untouched on a quiet period -- but if a firm's
+belief decays low enough from a run of genuinely bad-luck outcomes (not quiet periods: the firm
+posted vacancies and simply filled none of them, which local demand variance makes entirely
+possible), the computed target can go negative and stay there, since nothing ever refreshes a
+belief that never gets tested again. This is the same structural failure as Week 1's agent-level
+zero-search deadlock -- a bad belief that can never be corrected because it prevents the very
+observation that would correct it -- arrived at through bad luck rather than a bad prior, and at
+the firm level there's no shared aggregate signal (unlike the model-level
+`observed_hire_rate_per_trip`) to bail an individual firm out.
+
+Two fixes, addressing two different parts of the same failure. First, `update_fill_probability`
+became an exponential moving average (0.3 weight on the fresh observation) instead of a hard
+replace, so one unlucky period pulls the belief down without being able to zero it out in a
+single step. Second, and load-bearing: a firm quiet for three consecutive periods
+(`_EXPLORATION_PATIENCE`) posts one trial vacancy regardless of what its own formula says,
+purely to generate a fresh observation. The smoothing alone doesn't fix the deadlock -- as the
+belief decays towards zero the computed target approaches a fixed negative number
+(`kappa * -c_post`), not zero, so it keeps rounding down to zero forever without the floor.
+Economically, the floor is defensible on its own terms, not just as a numerical patch: most
+firms have some baseline replacement hiring from ordinary attrition even in a bad period, so a
+small amount of forced exploration isn't unrealistic on top of being necessary.
+
 ## Two corrections to not-yet-built code, from reading McFadden and Pissarides directly
 
 Neither `calibrate.py` nor the firm's free-entry test exists yet (both are Week 2/4 work), so
