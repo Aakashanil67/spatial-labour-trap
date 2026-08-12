@@ -11,8 +11,12 @@ no separate approval wait, unlike the geo-coded NIDS extract, which needs an Acc
 Researcher application and on-site access at UCT and is not used here. The National Household
 Travel Survey is published by StatsSA directly.
 
-Save everything to a folder **outside this repository**, e.g. `../thesis-data/`, and set
-`data_root` in `configs/*.yaml` to that path. Never inside `spatial-labour-trap/`.
+Save everything to a folder **outside this repository**, e.g. `../thesis-data/`. Never inside
+`spatial-labour-trap/`. `configs/*.yaml` never points at it -- `Config` is the *simulation's*
+configuration and has no reason to know where microdata lives. Each notebook in
+`notebooks/moments/` instead defines its own `DATA_ROOT` constant in its first code cell,
+pointed at wherever you saved the extracted files -- edit that one line per notebook, nothing
+shared or central to keep in sync.
 
 ## What the DataFirst licence permits publishing here
 

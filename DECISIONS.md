@@ -663,3 +663,42 @@ microdata directly, ten ranked methodological problems (including the matching-f
 simultaneity concern for SQ1's frictional-minus-frictionless differencing, and the MSM weight
 matrix choice against McFadden 1989's own variance decomposition), and an explicit assessment
 of where the thesis's contribution claim is narrower than currently phrased.
+
+## Week 3, notebook 01 -- discouraged_share, and the denominator question that applies to every QLFS moment
+
+The first real (non-provisional) number in `moments.csv`. Two of the decisions below apply to
+every QLFS-sourced moment still to come, so they're recorded once here rather than re-litigated
+per notebook.
+
+**Denominator: the expanded labour force, not the working-age population.**
+`src/moments.py`'s `discouraged_share()` computes `(discouraged + n_belief_inactive) / n_agents`
+-- a share of the *whole modelled population*. The model has no scholar, retiree, or home-maker
+agent type; every agent is either working, searching, or discouraged from searching. That maps
+onto StatsSA's expanded labour force (employed + unemployed-narrow + discouraged), not onto the
+full working-age population QLFS actually surveys, which also includes people the model simply
+doesn't represent. Using the wider denominator would have diluted the share with a population
+the model has no way to reproduce, and is also not the denominator StatsSA itself uses when it
+publishes the discouraged work-seeker rate as a share of the expanded labour force.
+
+**Source: QLFS's own `Status` classification, not a reconstruction.** `Status` (and its finer
+sibling `Lfs_Status`, present in some but not all quarters' files -- `Status` was used for
+consistency across all four) already classifies every respondent as Employed, Unemployed,
+Discouraged job seeker, or Other not economically active. Re-deriving that classification from
+the underlying reason codes (`Q38RSNNOTSEEK`, `InactReason`) would only add a second, less
+reliable copy of a judgement StatsSA has already made correctly.
+
+**Standard error is a Kish approximate-design-effect estimate, not a full survey-design SE.**
+QLFS's file carries a `Stratum` variable but no PSU/cluster identifier was found, so the
+reported SE accounts for unequal weighting but not for clustering -- it understates the true
+design-based SE, in a known, stated direction, rather than being silently treated as exact. A
+full Taylor-linearised or replicate-weight SE would need design variables this extract doesn't
+carry.
+
+**Four quarters, most recent single quarter as the headline, not a pool.** 2025 Q2 through
+2026 Q1 -- the four most recent with clean microdata on disk -- show a real upward trend, 11.9%
+to 13.4%, several times larger than any single quarter's own sampling error. Pooling across
+quarters would have averaged over that trend rather than reported it. `moments.csv`'s schema
+expects one `period` per moment, so the most recent quarter (2026 Q1, 13.43% +/- 0.23pp) is the
+headline value; the full by-quarter series lives in the notebook as documented context. The
+model's AR(1) shock mean-reverts and has no drift term, so a moving empirical target is a real
+tension worth carrying into the Calibration chapter, not one this notebook resolves.
