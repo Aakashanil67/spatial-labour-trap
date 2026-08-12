@@ -35,7 +35,14 @@ WAGE = 1.0  # D10 numeraire -- not a config field, see config.py
 
 
 class JobSeeker(Agent):
-    def __init__(self, model, initial_capital: float, home_x: float = 0.0, home_y: float = 0.0):
+    def __init__(
+        self,
+        model,
+        initial_capital: float,
+        home_x: float = 0.0,
+        home_y: float = 0.0,
+        wealth_quartile: int = 0,
+    ):
         super().__init__(model)
         self.state = SeekerState.SEARCHING
         self.search_capital = initial_capital
@@ -55,6 +62,11 @@ class JobSeeker(Agent):
         # heterogeneity cut keyed on where an agent GOES would be an artefact of the very
         # policy experiment being measured, not a description of who it helped.
         self.distance_band = model.distance_band_for(self.distance_to_cbd)
+        # Rank-assigned once from the agent's INITIAL capital draw, at model construction
+        # (D3): a transport subsidy that raises current capital must never move an agent
+        # between quartiles mid-run, or the heterogeneity cut becomes an artefact of the
+        # policy being measured rather than a description of who it helped.
+        self.wealth_quartile = wealth_quartile
 
     @property
     def cost_per_trip(self) -> float:

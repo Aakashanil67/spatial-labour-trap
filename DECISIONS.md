@@ -229,6 +229,33 @@ the optimum uses a disjoint seed list, so the fit quality reported in the thesis
 on the exact seeds the optimiser was allowed to fit to. There's a test for the determinism
 itself: two evaluations of the loss at the same parameter vector return an identical float.
 
+## D3, implemented -- wealth draw, cell aggregates, and the completed-spell histogram
+
+Three pieces landed together since they share one dependency chain. Wealth heterogeneity
+(`initial_capital_spread`, prompt 3.1) draws each agent's starting capital from a lognormal
+parametrised by coefficient of variation, not a normal -- real wealth data is skewed and never
+negative, and a normal draw would need truncating in a way that quietly drags the mean away
+from `initial_search_capital`, which calibration later treats as a target. Wealth quartiles are
+rank-assigned from that single draw before any agent exists, exactly once, matching the same
+"initial, never current" rule as `distance_band`.
+
+The cell aggregates are `(distance_band, wealth_quartile, step)` rows built fresh each step
+from a live scan of the population -- not incrementally maintained flow counters -- which
+costs a little more per step but means the aggregate can never silently drift out of sync with
+the actual agent states, the same kind of bug class the model has already hit twice. Measured:
+roughly 2,250 rows for a 150-step, 4-band, 4-quartile run, matching D3's original ~2,400-row
+estimate closely enough to trust the shape of the design.
+
+The completed-spell histogram's bucket edges (3, 6, 9, 12, 36, 60 months) were chosen to match
+QLFS's own duration question (`Q36TIMESEEK`) exactly, not picked independently -- so the
+eventual Week 3 comparison against real data is a straight like-for-like, not a re-binning
+exercise. Verified the mechanism actually fires, not just that it stays at zero: the first spot
+check used a comfortable, fast-churning config where every spell resolved in under six months,
+which said nothing about whether the 12-month threshold or the right-censoring at run-end
+actually worked. A second check under deliberately extreme scarcity (2 vacancies, 500 agents)
+confirmed both: `n_long_term` climbed to the full population and the completed-spell histogram
+correctly right-censored everyone still searching at the `>=60` bucket when the run ended.
+
 ## D13 -- Plain coordinates for the spatial grid, not Mesa's Cell/CellAgent API
 
 Mesa 3.5.1 has a real grid system (`mesa.discrete_space`: `OrthogonalMooreGrid`, `CellAgent`,

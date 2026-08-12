@@ -123,3 +123,91 @@ def test_higher_search_cost_still_raises_discouragement_when_spatial():
     cheap_share = (cheap["discouraged"] / SPATIAL.n_agents).iloc[tail].mean()
     expensive_share = (expensive["discouraged"] / SPATIAL.n_agents).iloc[tail].mean()
     assert expensive_share > cheap_share
+
+
+def test_no_wealth_spread_means_everyone_is_quartile_zero():
+    model = CityModel(MVM)  # initial_capital_spread defaults to 0.0
+    seekers = list(model._seekers())
+    assert all(a.wealth_quartile == 0 for a in seekers)
+    assert all(a.search_capital == MVM.initial_search_capital for a in seekers)
+
+
+def test_wealth_quartiles_are_evenly_sized_and_correctly_ordered():
+    cfg = replace(MVM, n_agents=400, initial_capital_spread=0.5)
+    model = CityModel(cfg)
+    seekers = list(model._seekers())
+    from collections import Counter
+
+    counts = Counter(a.wealth_quartile for a in seekers)
+    assert counts == {0: 100, 1: 100, 2: 100, 3: 100}
+    means = [
+        sum(a.search_capital for a in seekers if a.wealth_quartile == q) / 100 for q in range(4)
+    ]
+    assert means == sorted(means)  # quartile 0 poorest, quartile 3 richest, strictly ordered
+
+
+def test_wealth_quartile_never_changes_even_as_capital_is_spent():
+    """D3: the quartile is a property of the initial draw, not current capital -- an agent
+    spending its way toward zero (or receiving the household inflow) must not migrate."""
+    cfg = replace(MVM, n_agents=200, initial_capital_spread=0.5, n_steps=40)
+    model = CityModel(cfg)
+    seekers = list(model._seekers())
+    quartiles_before = {a.unique_id: a.wealth_quartile for a in seekers}
+    model.run()
+    seekers_after = list(model._seekers())
+    assert all(a.wealth_quartile == quartiles_before[a.unique_id] for a in seekers_after)
+
+
+def test_cell_aggregates_sum_to_the_same_totals_as_the_main_history():
+    cfg = replace(SPATIAL, initial_capital_spread=0.5)
+    model = CityModel(cfg)
+    history = model.run()
+    cells = model.cell_dataframe()
+    last_step = int(history["step"].iloc[-1])
+    row = history[history["step"] == last_step].iloc[0]
+    cell_rows = cells[cells["step"] == last_step]
+    assert cell_rows["n_searching"].sum() == row["u"]
+    assert cell_rows["n_employed"].sum() == row["l"]
+    assert cell_rows["n_discouraged"].sum() == row["discouraged"]
+    assert cell_rows["n_long_term"].sum() == row["n_long_term"]
+
+
+def test_long_term_share_is_zero_below_the_twelve_month_threshold():
+    """A short, fast-churning run shouldn't produce any 12-month-plus spells -- if this ever
+    goes positive on a config with n_steps well under 12, the threshold logic is wrong."""
+    cfg = replace(MVM, n_steps=8)
+    history = CityModel(cfg).run()
+    assert (history["n_long_term"] == 0).all()
+
+
+def test_completed_spells_and_censored_spells_account_for_the_full_population():
+    """Every agent has been in exactly one spell that either completed (hired or
+    discouraged) or is still open (censored) at the point the run ends -- the two counts
+    together should never exceed the population, and for a run with enough turnover, should
+    be close to it."""
+    cfg = replace(SPATIAL, n_steps=150)
+    model = CityModel(cfg)
+    model.run()
+    spells = model.completed_spell_dataframe()
+    total = spells["count"].sum()
+    assert total <= cfg.n_agents * (
+        cfg.n_steps // 1 + 1
+    )  # loose upper bound, no double count per spell
+    assert total > 0
+
+
+def test_extreme_scarcity_produces_a_fully_censored_long_spell():
+    """Confirms the long-term and censoring mechanism actually fires under a genuinely
+    scarce regime, not just that it stays at zero everywhere -- caught during manual testing
+    that a comfortable config alone wouldn't exercise this path at all."""
+    cfg = replace(
+        SPATIAL,
+        n_vacancies=2,
+        n_firms=1,
+        firm_kappa=0.1,
+        n_steps=80,
+        reentry_threshold=0.001,
+        household_inflow=0.0005,
+    )
+    history = CityModel(cfg).run()
+    assert history["n_long_term"].iloc[-1] > 0

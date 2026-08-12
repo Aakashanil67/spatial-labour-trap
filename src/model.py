@@ -33,6 +33,17 @@ from mesa import Model
 from src.agents import Firm, JobSeeker, SeekerState
 from src.config import Config
 
+# Completed-spell histogram bucket edges, in months, chosen to match QLFS's own duration
+# question (Q36TIMESEEK) exactly: <3, 3-6, 6-9, 9-12, 1-3yr, 3-5yr, >5yr. This is the
+# DESCRIPTIVE secondary structure D3 calls for, not the calibration target -- completed spells
+# under-represent long spells relative to a survey of the currently-unemployed stock under
+# length-biased sampling (a shorter true spell is more likely to complete inside any fixed
+# observation window). The actual long_term_share moment is computed fresh each step from
+# agents currently in the SEARCHING state, matching QLFS's stock-based definition exactly; see
+# DECISIONS.md D3.
+SPELL_BUCKET_EDGES_MONTHS = (3, 6, 9, 12, 36, 60)
+LONG_TERM_THRESHOLD_MONTHS = 12
+
 
 class CityModel(Model):
     def __init__(self, config: Config):
@@ -53,17 +64,30 @@ class CityModel(Model):
         # means zero observations means the belief never updates away from zero.
         self.observed_hire_rate_per_trip = config.n_vacancies / config.n_agents
         self.history: list[dict] = []
+        # D3's second fixed-size structure: a completed-spell histogram, descriptive only
+        # (see the module-level SPELL_BUCKET_EDGES_MONTHS docstring for why it is never the
+        # calibration target itself). One count per bucket, incremented whenever a searching
+        # spell ends -- by a hire or by capital exhaustion -- never reset during a run.
+        self.completed_spell_counts: dict[int, int] = dict.fromkeys(
+            range(len(SPELL_BUCKET_EDGES_MONTHS) + 1), 0
+        )
+        # D3's cell aggregates: one row per (distance_band, wealth_quartile) per step. This is
+        # what the Week 5 heterogeneity cuts and the actual calibration target (the stock-based
+        # long-term share, computed fresh each step from currently-searching agents) both read.
+        self.cell_history: list[dict] = []
 
         self._township_centres = self._draw_township_centres()
         self.firms: list[Firm] = self._create_firms()
 
-        for _ in range(config.n_agents):
+        capitals, wealth_quartiles = self._draw_capitals()
+        for capital, quartile in zip(capitals, wealth_quartiles, strict=True):
             home_x, home_y = self._draw_home()
             JobSeeker(
                 self,
-                initial_capital=config.initial_search_capital,
+                initial_capital=capital,
                 home_x=home_x,
                 home_y=home_y,
+                wealth_quartile=quartile,
             )
 
     # -- Agent-set filtering ---------------------------------------------------------------
@@ -72,6 +96,84 @@ class CityModel(Model):
         if state is None:
             return self.agents.select(lambda a: isinstance(a, JobSeeker))
         return self.agents.select(lambda a: isinstance(a, JobSeeker) and a.state is state)
+
+    # -- Duration tracking (D3) --------------------------------------------------------------
+
+    @staticmethod
+    def _spell_bucket(months: int) -> int:
+        bucket = 0
+        for edge in SPELL_BUCKET_EDGES_MONTHS:
+            if months < edge:
+                break
+            bucket += 1
+        return bucket
+
+    def _record_completed_spell(self, months: int) -> None:
+        self.completed_spell_counts[self._spell_bucket(months)] += 1
+
+    def _collect_cell_row(self, searching) -> None:
+        """One row per (distance_band, wealth_quartile) cell, every step. Aggregates only --
+        no agent identifiers -- see D3 in DECISIONS.md for why."""
+        cells: dict[tuple[int, int], dict[str, int]] = {}
+
+        def cell_for(agent) -> dict[str, int]:
+            key = (agent.distance_band, agent.wealth_quartile)
+            if key not in cells:
+                cells[key] = {
+                    "n_searching": 0,
+                    "n_long_term": 0,
+                    "n_employed": 0,
+                    "n_discouraged": 0,
+                }
+            return cells[key]
+
+        for agent in searching:
+            row = cell_for(agent)
+            row["n_searching"] += 1
+            if agent.months_in_state >= LONG_TERM_THRESHOLD_MONTHS:
+                row["n_long_term"] += 1
+        for agent in self._seekers(SeekerState.EMPLOYED):
+            cell_for(agent)["n_employed"] += 1
+        for agent in self._seekers(SeekerState.DISCOURAGED):
+            cell_for(agent)["n_discouraged"] += 1
+
+        for (band, quartile), counts in cells.items():
+            self.cell_history.append(
+                {
+                    "step": self.steps,
+                    "distance_band": band,
+                    "wealth_quartile": quartile,
+                    **counts,
+                }
+            )
+
+    # -- Wealth heterogeneity ----------------------------------------------------------------
+
+    def _draw_capitals(self) -> tuple[list[float], list[int]]:
+        """Draws every agent's initial search capital in one pass, then rank-assigns wealth
+        quartiles from that single draw -- has to happen before any JobSeeker exists, since
+        a quartile is a population-relative statistic and D3 requires it fixed at the
+        *initial* draw, never recomputed from an agent's current (post-search) capital."""
+        cfg = self.config
+        if cfg.initial_capital_spread <= 0:
+            capitals = [cfg.initial_search_capital] * cfg.n_agents
+            return capitals, [0] * cfg.n_agents
+
+        # Lognormal, not normal: real wealth data is skewed and never negative, and a normal
+        # draw would need truncating (which distorts the mean away from initial_search_capital
+        # in a way that depends on the spread, quietly breaking calibration's use of that
+        # field as a target). Parametrised by coefficient of variation, not raw variance, so
+        # initial_capital_spread has a units-free interpretation regardless of the wage scale.
+        cv = cfg.initial_capital_spread
+        sigma_sq = math.log(1 + cv**2)
+        mu = math.log(cfg.initial_search_capital) - sigma_sq / 2
+        capitals = [self.rng.lognormal(mu, math.sqrt(sigma_sq)) for _ in range(cfg.n_agents)]
+
+        order = sorted(range(cfg.n_agents), key=lambda i: capitals[i])
+        quartiles = [0] * cfg.n_agents
+        for rank, idx in enumerate(order):
+            quartiles[idx] = min(3, rank * 4 // cfg.n_agents)
+        return capitals, quartiles
 
     # -- Spatial setup ----------------------------------------------------------------------
 
@@ -159,11 +261,14 @@ class CityModel(Model):
 
         # 3. Capital-exhaustion check, using capital as it stands entering this step -- i.e.
         #    from trips paid for last step. An agent that can no longer afford one trip
-        #    becomes discouraged before this period's u_t is recorded, not after.
+        #    becomes discouraged before this period's u_t is recorded, not after. This is one
+        #    of the two places a searching spell ends -- record its completed length before
+        #    the counter resets.
         searching = self._seekers(SeekerState.SEARCHING)
         n_searching_pre_exhaustion = len(searching)
         for agent in searching:
             if not agent.can_afford_one_trip():
+                self._record_completed_spell(agent.months_in_state)
                 agent.state = SeekerState.DISCOURAGED
                 agent.months_in_state = 0
         searching = self._seekers(SeekerState.SEARCHING)
@@ -176,11 +281,15 @@ class CityModel(Model):
         for firm in self.firms:
             firm.decide_vacancies()
 
-        # 4. Record start-of-period stocks (D11), strictly before matching runs.
+        # 4. Record start-of-period stocks (D11), strictly before matching runs. The
+        #    long-term-share moment and the cell aggregates are stocks in exactly the same
+        #    sense as u_t, so they're measured here too, not after matching resolves.
         u_t = len(searching)
         v_t = sum(f.vacancies for f in self.firms) if self.firms else cfg.n_vacancies
         l_t = len(self._seekers(SeekerState.EMPLOYED))
         disc_t = len(self._seekers(SeekerState.DISCOURAGED))
+        n_long_term = sum(1 for a in searching if a.months_in_state >= LONG_TERM_THRESHOLD_MONTHS)
+        self._collect_cell_row(searching)
 
         # 5. Trip decisions and payment (the intensity margin, M5).
         self._activate(searching, "step_searching")
@@ -208,6 +317,7 @@ class CityModel(Model):
                 "v": v_t,
                 "l": l_t,
                 "discouraged": disc_t,
+                "n_long_term": n_long_term,
                 "m": m_t,
                 "total_trips": total_trips,
                 "n_separations": n_separations,
@@ -240,6 +350,7 @@ class CityModel(Model):
                 hired.append(a)
                 seen_ids.add(a.unique_id)
         for a in hired:
+            self._record_completed_spell(a.months_in_state)
             a.resolve_hire()
         return len(hired)
 
@@ -289,6 +400,7 @@ class CityModel(Model):
                     firm_hired.append(agent)
                     seen_here.add(agent.unique_id)
             for agent in firm_hired:
+                self._record_completed_spell(agent.months_in_state)
                 agent.resolve_hire()
                 hired_ids.add(agent.unique_id)
             firm.hires_this_step = len(firm_hired)
@@ -302,3 +414,38 @@ class CityModel(Model):
         for _ in range(self.config.n_steps):
             self.step()
         return pd.DataFrame(self.history)
+
+    def cell_dataframe(self) -> pd.DataFrame:
+        """D3's (distance_band x wealth_quartile x step) aggregates. Empty rows for a cell at
+        a step where it happened to hold no agents are simply absent -- callers doing a
+        heterogeneity cut should reindex against the full band/quartile product if they need
+        explicit zeros."""
+        return pd.DataFrame(self.cell_history)
+
+    def completed_spell_dataframe(self) -> pd.DataFrame:
+        """D3's descriptive completed-spell histogram, plus the right-censored bucket for
+        agents still searching when the run ends -- their spell hasn't completed, but is
+        known to be at least months_in_state long. Bucket labels match SPELL_BUCKET_EDGES_MONTHS
+        exactly, so this is directly comparable to QLFS's Q36TIMESEEK coding once the real
+        moment notebook is written."""
+        labels = [
+            f"<{SPELL_BUCKET_EDGES_MONTHS[0]}",
+            *(
+                f"{lo}-{hi}"
+                for lo, hi in zip(
+                    SPELL_BUCKET_EDGES_MONTHS[:-1], SPELL_BUCKET_EDGES_MONTHS[1:], strict=True
+                )
+            ),
+            f">={SPELL_BUCKET_EDGES_MONTHS[-1]}",
+        ]
+        rows = [
+            {"bucket": label, "censored": False, "count": self.completed_spell_counts[i]}
+            for i, label in enumerate(labels)
+        ]
+        censored_counts: dict[int, int] = {}
+        for agent in self._seekers(SeekerState.SEARCHING):
+            bucket = self._spell_bucket(agent.months_in_state)
+            censored_counts[bucket] = censored_counts.get(bucket, 0) + 1
+        for bucket, count in censored_counts.items():
+            rows.append({"bucket": labels[bucket], "censored": True, "count": count})
+        return pd.DataFrame(rows)

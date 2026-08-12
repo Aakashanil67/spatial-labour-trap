@@ -18,7 +18,7 @@ import yaml
 class Config:
     n_agents: int
     n_vacancies: int  # MVM fixed-pool mode when n_firms == 0; ignored otherwise (see n_firms)
-    initial_search_capital: float  # W0. Homogeneous across agents in the MVM (Week 2 draws it).
+    initial_search_capital: float  # W0. Mean of the draw once initial_capital_spread > 0.
     search_cost_per_trip: float  # c -- the flat/base component; see transport_cost_rate
     separation_rate: float  # lambda, monthly probability an employed agent is separated (M1)
     belief_multiplier: float  # beta -- biases perceived offer rate away from the observed one (M6)
@@ -59,6 +59,13 @@ class Config:
     # firm's neighbourhood radius -- see DECISIONS.md.
     rho_A: float = 0.0  # persistence; 0 = no persistence (degenerate constant productivity)
     sigma_A: float = 0.0  # shock std dev; 0 = no shock (deterministic productivity = 1)
+
+    # -- Week 2: wealth heterogeneity (prompt 3.1). 0 keeps the MVM's single shared W0 --
+    # every agent gets exactly initial_search_capital and wealth_quartile is meaningless
+    # (all agents share cell 0). > 0 draws each agent's own capital from a lognormal with
+    # that coefficient of variation, matching the shape of real wealth data (skewed, never
+    # negative) rather than a normal draw that would need truncating.
+    initial_capital_spread: float = 0.0
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> Config:
