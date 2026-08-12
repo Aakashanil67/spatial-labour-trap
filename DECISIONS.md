@@ -813,3 +813,48 @@ All four moments in `moments.csv` are now real, non-provisional numbers: `discou
 13.43%, `transport_budget_share` 10.58%, `long_term_share` 77.44%, `distance_gradient_slope`
 5.03. D7's provisional-at-freeze rule has nothing left to apply to when Week 4 calibration
 begins.
+
+## matching.py, the first SQ1 number, and a real problem it surfaced
+
+`src/matching.py` implements the CRS-testing spec exactly as written above: the unconstrained
+`log m = log a + b_u log u + b_v log v` fit first, a Wald test of `b_u + b_v = 1`, then the
+CRS-constrained `a` as the headline number only once that test has actually run. Validated
+against synthetic data generated from a known Cobb-Douglas matching function with a known
+degree of returns to scale, not just checked to run -- the noiseless case recovers the exact
+parameters to six decimal places, and the Wald test correctly rejects a synthetic dataset built
+with genuine increasing returns (`b_u + b_v = 1.3`) while not rejecting one built with genuine
+constant returns.
+
+`configs/frictionless.yaml` is `baseline.yaml` with `transport_cost_rate` set to 0 and nothing
+else changed -- population, firms, wealth heterogeneity and the AR(1) shock held fixed, since
+SQ1 asks what removing the spatial-friction channel does at a fixed population, not what a
+different population does. Twenty common seeds, both configs, matching function fitted on each
+run's post-burn-in window, per-seed paired difference `delta_a = a(friction) - a(frictionless)`.
+
+**The number came back near zero and uninformative, and the reason why is the actual finding.**
+`a_constrained` sits at almost exactly 1.0 in both arms for the large majority of seeds --
+mean `delta_a = -0.0025`, 95% interval `[-0.025, +0.009]`, which contains zero. Digging into
+why: at `baseline.yaml`'s default population (500 agents), the labour market is heavily
+vacancy-abundant (theta ~= 9.85, established while designing the scarce-vacancy smoke test
+earlier this session) -- close enough to "every unemployed searcher who trips gets hired" that
+matches track unemployment almost exactly regardless of whether transport costs exist. The fit
+sits in a **degenerate corner** (`b_u ~= 1`, `b_v ~= 0`) where vacancies carry almost no
+measured elasticity, not a genuine, well-identified Cobb-Douglas interior point -- and a
+matching-efficiency comparison computed at a population where vacancies don't matter cannot
+detect an effect that operates through vacancy scarcity, whatever the true effect actually is.
+Confirmed this isn't specific to 500 agents: sweeping population up (the same sweep that found
+the scarce-vacancy threshold) shows the model transitioning to the *opposite* degenerate corner
+(`b_u ~= 0`, `b_v ~= 1`, matches tracking vacancies instead) around 18,000 agents, with a
+genuinely ill-behaved zone in between (10,000-15,000 agents) where the Wald test correctly
+rejects constant returns -- real increasing returns to scale, not noise (`b_u + b_v` up to 1.59).
+There may be no population at which this model's matching technology is well-approximated by a
+stable, non-degenerate Cobb-Douglas form with both elasticities economically meaningful at once.
+
+This is exactly what "what population the SQ1 interval is over" (the Week 3 gate question) is
+asking, and the honest current answer is that the population choice used here is the wrong one
+for a headline result -- not because anything is broken, but because it sits in a regime where
+the measurement is structurally insensitive to the thing being measured. Flagged for Week 5's
+full validation, not resolved here: the population scale for the real SQ1 comparison needs
+choosing with this corner-degeneracy in mind, and the model's matching technology's departure
+from constant returns in the 10,000-15,000 range is itself worth understanding mechanistically
+before it's papered over with a CRS constraint that doesn't hold there.

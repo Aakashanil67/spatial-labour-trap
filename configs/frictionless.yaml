@@ -1,0 +1,45 @@
+# SQ1's frictionless counterpart to configs/baseline.yaml: identical in every field except
+# transport_cost_rate, which is 0 here. Distance still varies across agents (townships are
+# drawn the same way) and distance still enters D2's targeting bias through cbd_radius, but a
+# trip no longer costs more the further an agent lives from the CBD -- the direct spatial-
+# friction channel is switched off, not the spatial structure itself. Holding population,
+# firms, wealth heterogeneity and the AR(1) shock identical to baseline.yaml is deliberate:
+# SQ1 asks what removing spatial friction does to matching efficiency at a fixed population,
+# not what a different population does.
+#
+# python -m src.run --config configs/frictionless.yaml
+
+n_agents: 500
+n_vacancies: 15
+initial_search_capital: 0.6
+initial_capital_spread: 0.5
+search_cost_per_trip: 0.02
+separation_rate: 0.0048
+belief_multiplier: 1.0
+household_inflow: 0.008
+reentry_threshold: 0.035
+max_trips_per_step: 3
+n_steps: 150
+seed: 42
+shuffled_activation: true
+
+grid_size: 40
+cbd_radius: 2.0
+n_townships: 4
+township_distance_min: 8.0
+township_distance_max: 20.0
+township_spread: 2.0
+transport_cost_rate: 0.0 # the only field that differs from baseline.yaml
+n_distance_bands: 4
+
+n_firms: 5
+firm_radius: 2.5
+firm_productivity: 1.2
+firm_posting_cost: 0.1
+firm_kappa: 0.9
+discount_rate: 0.001332
+
+rho_A: 0.849
+sigma_A: 0.0057
+
+burn_in_steps: 50
