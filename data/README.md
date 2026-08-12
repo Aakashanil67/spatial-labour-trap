@@ -16,8 +16,14 @@ Save everything to a folder **outside this repository**, e.g. `../thesis-data/`,
 
 ## What the DataFirst licence permits publishing here
 
-Recorded in `paper/notes/prompt-0.2-licence-check.md` once that check runs (Week 1). Until
-then, treat every published number as gated by that answer, not assumed.
+Checked in `paper/notes/prompt-0.2-licence-check.md`: QLFS, PALMS and NIDS W5 are all
+DataFirst's "Public use" tier (Creative Commons Attribution, CC-BY), which permits publishing
+derived aggregates -- shares, means, regression coefficients -- with attribution, no restriction
+beyond that. The restriction in this licence family is on redistributing the underlying
+individual-level records, which this repo never commits regardless of licence tier. Every row
+in `moments.csv` needs a citation naming the producer (Statistics South Africa or SALDRU) and
+DataFirst as distributor, in the format DataFirst's own catalogue specifies -- see the licence
+check note for the exact citation string.
 
 ## `moments.csv` schema
 
