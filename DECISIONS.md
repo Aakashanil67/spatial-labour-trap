@@ -745,3 +745,50 @@ needing to assume away the covariance a delta-method formula would have to ignor
 This is now the second-most fragile moment after the SA separation rate still to come in
 notebook 03 (which needs its own panel construction). Flagged here explicitly should D7's
 provisional-at-freeze rule ever need to apply to it.
+
+## Week 3, notebook 03 -- long_term_share (clean), and the SA separation rate no longer needs Miyamoto's fallback
+
+`long_term_share` was the easy one, same pattern as `discouraged_share`: QLFS's own
+`Long_term_unempl` classifies the currently unemployed as long-term or short-term directly, no
+reconstruction needed. Four most recent quarters run 76.6 to 79.7 per cent with no clear trend
+(unlike `discouraged_share`'s), so the headline value is the most recent quarter by the same
+convention as notebook 01: **77.44 per cent, +/- 0.54pp**. A number this high is not a red flag
+on its own -- South Africa's long-term unemployment share is well documented as one of the
+highest in the world; this is corroborating, not surprising.
+
+**The separation rate was the one flagged as a possible fallback, and it turned out not to need
+one.** M1's spec: compute it from QLFS/PALMS panel transitions, keep Miyamoto (2011)'s Japanese
+0.0048 monthly only "if the SA rate is not computable by end of week 3." PALMS's household and
+person identifiers are only meaningful within a single survey wave, not automatically across its
+30-year harmonised span (the same caution already applied to NHTS and QLFS variable identifiers
+in notebooks 01 and 02) -- but the raw QLFS quarterly files carry `UQNO` and `PERSONNO`, and QLFS
+is a genuine rotating panel: linking 2025 Q2 to Q3 by those two fields recovers 43,796 matched
+individuals out of 65,443, a real ~67 per cent retention, not a coincidence at that scale.
+
+Method: for each of the three available consecutive quarter-pairs, take everyone matched in both
+quarters who was `Employed` in the first, and check whether they still are in the second. Pooled
+across all three pairs (every matched employed person is one observation in one weighted mean,
+not three separately-averaged rates): **9.21 per cent quarterly**. Rebased to monthly with the
+same compounding convention already used for `rho_A` (`(1 - monthly)^3 = (1 - quarterly)`, see
+the AR(1) note above) gives **3.17 per cent monthly (95% CI 3.06-3.29pp, bootstrapped)** --
+roughly 6.6x Miyamoto's Japanese figure.
+
+That gap is large enough to deserve a second opinion before trusting it, so it got one:
+StatsSA's own published QLFS panel transition statistics (statssa.gov.za/?p=19090) report 91.8
+per cent quarterly employment retention for 2024 Q3->Q4 (an 8.2 per cent separation rate that
+quarter) and 94.0 per cent for 2019 Q3->Q4 (6.0 per cent). This notebook's 9.21 per cent for
+2025-26 sits close to, and slightly above, StatsSA's own 2024 figure -- consistent with the
+deteriorating labour market `discouraged_share` already showed over the same window, not an
+outlier result. A 6.6x gap from Miyamoto's number is not itself surprising: Japan is close to
+the global floor on labour turnover, so any other country reading several times higher than it
+is the expected pattern.
+
+**Deliberately not yet written into any config file.** `configs/baseline.yaml`, `trace_demo.yaml`
+and both `scarce_vacancies*.yaml` configs were all built and validated this session under
+Miyamoto's 0.0048 -- `trace_demo.yaml`'s specific seed/agent pair (seed 5, agent 32) was found by
+scanning under that exact economics, and the scarce-vacancy smoke test's `n_agents=18,000`
+threshold is specific to it too. Swapping in 3.17 per cent now, mid-Week-3, would silently
+invalidate both without a re-check. The rate is computed, checked against an independent source,
+and recorded in the notebook; adopting it into the configs is deliberately left for Week 4,
+alongside the rest of the calibration setup, where those two artefacts get re-verified as
+planned work rather than as an unplanned casualty of this notebook.
