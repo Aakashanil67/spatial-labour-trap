@@ -825,6 +825,16 @@ parameters to six decimal places, and the Wald test correctly rejects a syntheti
 with genuine increasing returns (`b_u + b_v = 1.3`) while not rejecting one built with genuine
 constant returns.
 
+**The Wald test uses Newey-West (HAC) standard errors, not ordinary OLS ones** -- this is the
+answer to the "why autocorrelation matters" Week 3 gate question, implemented, not just
+recited. `u_t`, `v_t` and `m_t` are one run's own time series, evolving smoothly period to
+period rather than drawn independently; treating consecutive periods as iid observations (what
+plain OLS does) understates the true standard errors and makes the test overconfident. Lag
+count follows Newey and West's own automatic rule, `floor(4*(T/100)**(2/9))`, not a number
+picked by eye. Re-ran the SQ1 sweep below after adding this -- the point estimates and `delta_a`
+figures are unchanged (HAC only changes standard errors, not coefficients), and the CRS
+rejection counts moved by at most one seed out of twenty in either arm.
+
 `configs/frictionless.yaml` is `baseline.yaml` with `transport_cost_rate` set to 0 and nothing
 else changed -- population, firms, wealth heterogeneity and the AR(1) shock held fixed, since
 SQ1 asks what removing the spatial-friction channel does at a fixed population, not what a

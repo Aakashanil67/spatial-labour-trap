@@ -8,6 +8,14 @@ change with pure misspecification error from evaluating the wrong functional for
 unconstrained fit is reported first; the CRS-constrained `a` is the headline number only once
 constant returns has actually been tested, not assumed. See DECISIONS.md, "The matching-function
 fit tests constant returns before assuming it."
+
+The Wald test uses Newey-West (HAC) standard errors, not ordinary OLS ones. `u_t`, `v_t` and
+`m_t` are a single run's own time series -- they evolve smoothly period to period, not as iid
+draws, so treating consecutive periods as independent observations understates the true
+standard errors and makes the Wald test overconfident, exactly the "what population the SQ1
+interval is over" class of mistake the build plan's own uncertainty-objects note warns about
+for this kind of within-run inference (see DECISIONS.md). The lag count follows Newey and
+West's own automatic rule, `floor(4*(T/100)**(2/9))`, not a fixed number picked by eye.
 """
 
 from __future__ import annotations
@@ -53,7 +61,10 @@ def fit_matching_function(window: pd.DataFrame, alpha: float = 0.05) -> Matching
     log_v = np.log(usable["v"].to_numpy())
     log_m = np.log(usable["m"].to_numpy())
 
-    unconstrained = sm.OLS(log_m, sm.add_constant(np.column_stack([log_u, log_v]))).fit()
+    maxlags = max(1, int(np.floor(4 * (n_obs / 100) ** (2 / 9))))
+    unconstrained = sm.OLS(log_m, sm.add_constant(np.column_stack([log_u, log_v]))).fit(
+        cov_type="HAC", cov_kwds={"maxlags": maxlags}
+    )
     intercept, b_u, b_v = unconstrained.params
     wald = unconstrained.f_test("x1 + x2 = 1")
     wald_pvalue = float(np.asarray(wald.pvalue).item())
