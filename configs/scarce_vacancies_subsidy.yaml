@@ -1,0 +1,41 @@
+# The treatment arm for the scarce-vacancy smoke test: configs/scarce_vacancies.yaml with
+# transport_cost_rate halved (0.004 -> 0.002), the smallest change that's still a real subsidy
+# rather than a rounding difference. Everything else, including the seed, is identical, so any
+# difference in the resulting search intensity or employment numbers is attributable to this one
+# parameter -- not a paired-seed design (D12 is Week 4 work), just the sign-only check this
+# smoke test is scoped to.
+
+n_agents: 18000
+n_vacancies: 15
+initial_search_capital: 0.6
+initial_capital_spread: 0.5
+search_cost_per_trip: 0.02
+separation_rate: 0.0048
+belief_multiplier: 1.0
+household_inflow: 0.008
+reentry_threshold: 0.035
+max_trips_per_step: 3
+n_steps: 150
+seed: 42
+shuffled_activation: true
+
+grid_size: 40
+cbd_radius: 2.0
+n_townships: 4
+township_distance_min: 8.0
+township_distance_max: 20.0
+township_spread: 2.0
+transport_cost_rate: 0.002 # halved from baseline's 0.004 -- the subsidy
+n_distance_bands: 4
+
+n_firms: 5
+firm_radius: 2.5
+firm_productivity: 1.2
+firm_posting_cost: 0.1
+firm_kappa: 0.9
+discount_rate: 0.001332
+
+rho_A: 0.849
+sigma_A: 0.0057
+
+burn_in_steps: 50

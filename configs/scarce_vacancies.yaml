@@ -1,0 +1,51 @@
+# The half-day scarce-vacancy smoke test (sign-only, not the full Week 5 validation): does a
+# small transport subsidy raise search intensity without raising employment, matching Banerjee
+# and Sequeira (2023)? See configs/scarce_vacancies_subsidy.yaml for the treatment arm.
+#
+# Everything here is configs/baseline.yaml's own already-validated economics -- c_post, kappa,
+# n_firms, rho_A and sigma_A are untouched, exactly as the plan specifies -- with n_agents
+# raised from 500 to 18,000. That's the only lever: the AR(1) shock's calibrated amplitude
+# (sigma_A=0.0057) turned out too small to ever move the vacancy count meaningfully (mean
+# realised shock varies by under 0.3 percentage points across 30 seeds), so "a persistent low
+# state of the AR(1) process" doesn't survive contact with the actual parameters -- see
+# DECISIONS.md. Found by sweeping n_agents against a fixed 5-firm supply and tracking the fill
+# ratio (matches / vacancies posted), not just labour market tightness (v/u): at 18,000 agents,
+# firms fill essentially every vacancy they post (fill_ratio ~= 1.00, theta ~= 0.19) -- vacancies
+# are the binding constraint on hiring, not search effort, which is the actual condition the
+# sign pattern needs. At baseline's own 500 agents the market is vacancy-abundant (theta ~= 9.9,
+# fill_ratio ~= 0.10) and more search obviously would raise employment; that's not scarcity.
+
+n_agents: 18000
+n_vacancies: 15
+initial_search_capital: 0.6
+initial_capital_spread: 0.5
+search_cost_per_trip: 0.02
+separation_rate: 0.0048
+belief_multiplier: 1.0
+household_inflow: 0.008
+reentry_threshold: 0.035
+max_trips_per_step: 3
+n_steps: 150
+seed: 42
+shuffled_activation: true
+
+grid_size: 40
+cbd_radius: 2.0
+n_townships: 4
+township_distance_min: 8.0
+township_distance_max: 20.0
+township_spread: 2.0
+transport_cost_rate: 0.004
+n_distance_bands: 4
+
+n_firms: 5
+firm_radius: 2.5
+firm_productivity: 1.2
+firm_posting_cost: 0.1
+firm_kappa: 0.9
+discount_rate: 0.001332
+
+rho_A: 0.849
+sigma_A: 0.0057
+
+burn_in_steps: 50

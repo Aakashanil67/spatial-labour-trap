@@ -371,6 +371,56 @@ confirm each one fails without the fix and passes with it, rather than trusting 
 inspection alone, which is exactly the mistake that let the first fix's coverage gap through
 undetected for a full session.
 
+## D4, closed out -- the campaign fits inside an hour, not an overnight window
+
+Benchmarked `configs/baseline.yaml` at its real N and T (500 agents, 150 steps) through
+`runner.py`'s actual `run_many`, not a standalone timing script, so the measurement includes the
+same cache-write and `joblib` dispatch overhead the real campaign pays: 24 seeds, chosen well
+outside any range already in `results/cache/` so every one was a genuine cache miss, at
+`N_JOBS=6`. Wall clock: 8.0 seconds for 24 runs, or 0.332 seconds of effective per-run time once
+the six-way parallelism is accounted for. Scaled to the full campaign's roughly 7,300 named runs
+(D4's own count: Latin hypercube 3,000, Nelder-Mead ~2,000, 50 at the optimum, sweeps 1,620,
+experiments 500, condition mapping 810), that's about 40 minutes -- 0.67 hours against an
+overnight window D4 originally sized at 8 to 12 hours. The Mesa-based implementation has roughly
+an order of magnitude of headroom left even before the pass-through grid and the
+beliefs/scarcity decomposition (both currently unscoped additions per the schedule's cut list)
+are added on top. The vectorised NumPy fast-path contingency, and the three-part equivalence
+test D4 specified for it, are not needed and are not being built -- reopen this decision only if
+a specific addition to the campaign's run count actually threatens the window, not
+speculatively.
+
+## The scarce-vacancy smoke test: the sign pattern is there, and vacancies are visibly the bottleneck
+
+`configs/scarce_vacancies.yaml` and `configs/scarce_vacancies_subsidy.yaml` differ in exactly one
+field, `transport_cost_rate` (0.004 halved to 0.002 -- a real subsidy, not a rounding change),
+both at the 18,000-agent operating point the population sweep above found. Five seeds
+(42, 101, 202, 303, 404), same seeds under both configs, run through `runner.py`.
+
+Search intensity rose under every single seed: mean trips per active searcher went from 1.018 to
+1.025 on average, +0.4 to +0.9 per cent depending on the seed, consistently in the same
+direction. Employment did not move in any consistent direction: mean employed count changed by
++3.25, -3.39, +3.48, -0.25 and -2.49 per cent across the five seeds; the mean across seeds is +0.11 per cent -- indistinguishable from noise at this
+seed count, and nowhere near the scale of the intensity change. Mean vacancies posted and mean
+matches per period barely moved at all: 146.45 to 146.37 across both configs. That's why: firms
+were already filling almost every vacancy they posted before the subsidy (`fill_ratio ~= 1.00`),
+so vacancy supply -- not search effort -- was already the binding constraint, and more searching
+cannot conjure a match that has no vacancy to land in. That's the Banerjee and Sequeira (2023)
+sign pattern, present and clean, on a config that changed nothing about firm behaviour.
+
+What actually moved instead: mean unemployed count rose sharply, 40 to 55 per cent depending on
+the seed. With employment flat and vacancies flat, that rise has to be agents who were
+previously discouraged or belief-inactive being pulled into active search by the lower cost, not
+agents leaving jobs. The subsidy raises participation in a scarce market without raising
+placement -- a sharper, more mechanistic statement than "search up, employment flat" on its own,
+and one this smoke test wasn't explicitly asked to produce but which falls directly out of the
+model's own accounting once vacancies are genuinely the bottleneck.
+
+Sign-only, five seeds, not paired-difference intervals under common random numbers (that's D12,
+Week 4 work) -- this is exactly the half-day check the plan scoped, not the Week 5 validation.
+The consistency of the intensity sign across all five seeds and the near-total flatness of
+vacancies/matches make the result reasonably trustworthy for what it's being used for: a decision
+to proceed, not a paper claim.
+
 ## Two corrections to not-yet-built code, from reading McFadden and Pissarides directly
 
 Neither `calibrate.py` nor the firm's free-entry test exists yet (both are Week 2/4 work), so
