@@ -792,3 +792,24 @@ invalidate both without a re-check. The rate is computed, checked against an ind
 and recorded in the notebook; adopting it into the configs is deliberately left for Week 4,
 alongside the rest of the calibration setup, where those two artefacts get re-verified as
 planned work rather than as an unplanned casualty of this notebook.
+
+## Week 3, notebook 04 -- distance_gradient_slope, and the fourth moment is real
+
+The last of the four -- documentation and unit reconciliation, not a computation, since no
+survey on disk reports employment binned by kilometre-distance (confirmed in the literature
+verification). Baez and Kshirsagar (2026) Table 5b reports three separate, city-specific
+coefficients -- Johannesburg 4.9, Cape Town 3.7, eThekwini 6.5 pp employment-share drop per
+10-percentile increase in travel-time rank -- not one number, and the model is a single
+stylised city, not any specific metro among the three. The mean, 5.03, is used rather than
+picking one city arbitrarily.
+
+The source paper's own standard errors for these coefficients weren't recoverable in this
+environment (no PDF-rendering tool available to read the working paper's actual table), so
+`moments.csv`'s `standard_error` for this row is the cross-city sample standard deviation
+(1.40) -- real city-to-city heterogeneity, not a sampling error, and labelled as exactly that
+in both the notebook and the `source` column rather than left to be mistaken for one.
+
+All four moments in `moments.csv` are now real, non-provisional numbers: `discouraged_share`
+13.43%, `transport_budget_share` 10.58%, `long_term_share` 77.44%, `distance_gradient_slope`
+5.03. D7's provisional-at-freeze rule has nothing left to apply to when Week 4 calibration
+begins.
