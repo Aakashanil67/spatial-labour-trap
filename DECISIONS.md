@@ -868,3 +868,129 @@ full validation, not resolved here: the population scale for the real SQ1 compar
 choosing with this corner-degeneracy in mind, and the model's matching technology's departure
 from constant returns in the 10,000-15,000 range is itself worth understanding mechanistically
 before it's papered over with a CRS constraint that doesn't hold there.
+
+## Week 4, calibrate.py -- the MSM engine, D12 and M9 implemented exactly as specified
+
+Four free parameters against the four moments in `data/moments.csv`: `search_cost_per_trip`
+(c), `initial_search_capital` (W0), `firm_radius` (rho), `firm_kappa` (kappa) -- prompt 4.2's
+own list, unchanged. Exactly identified, no slack for a formal overidentification check; the
+out-of-calibration validation against Banerjee and Sequeira's null result is the substitute, as
+M9's own note already said before this file existed.
+
+**The weight matrix is inverse (data SE^2 + simulation variance), not data variance alone** --
+M9's correction, implemented rather than left as a note for later. Simulation variance is
+estimated directly from the spread of the 15 common-random-number seeds at each evaluation
+(variance of the mean, not the raw per-seed spread), never assumed negligible.
+
+**D12's common random numbers**: `CALIBRATION_SEEDS` (15, `config.py`) reused at every
+evaluation during both the Latin hypercube and Nelder-Mead stages, so the loss is a
+deterministic function of the parameters -- tested directly (`test_msm_loss_is_deterministic_at_a_fixed_parameter_vector`),
+not just asserted. `VALIDATION_SEEDS` (50, disjoint) is used once, at the reported optimum
+only, so the fit quality shown was never available to the optimiser to fit to.
+
+**Caching required a second cache flavour, not a reuse of the first.** `runner.py`'s existing
+`run_cached`/`run_many` cache the raw history DataFrame, but `distance_gradient_slope` is
+cross-sectional and reads the *live* `CityModel`'s final agent states directly -- a pickled
+history alone can't reconstruct that, and a calibration run needs thousands of (config, seed)
+evaluations, each producing only four floats worth keeping. `run_moments_cached`/
+`run_moments_many` cache the *computed moments* (a small JSON dict) per (config, seed) instead,
+computed at the point where both the model and its history still exist. This also required
+adding `src/moments.py` to `runner.py`'s source fingerprint, which previously covered only
+`agents.py` and `model.py` -- an edit to `moments.py`'s own logic wouldn't have invalidated a
+stale moments cache otherwise, a real correctness gap caught while building this, not before.
+
+**Validated by parameter recovery, not just by running.** `test_recovers_a_known_parameter_vector`
+(marked `slow`) simulates "empirical" moments from a known parameter vector on a small config,
+feeds them back in as the calibration target, and confirms the LHS+Nelder-Mead engine finds its
+way back to within 35 per cent of each parameter's search-box width -- the same "recover a known
+answer" standard as `dmp.py`'s Chen recovery and `matching.py`'s synthetic-data tests, applied to
+the optimiser itself rather than to a closed-form fit.
+
+## The identification logic, and where the real weak spots are
+
+Prompt 4.2 asks for this explained, not just the calibrated numbers handed over.
+
+**`firm_radius` (rho) identifies `distance_gradient_slope` most directly** -- it's the literal
+parameter controlling how far a firm's hiring catchment reaches, so it's the most direct lever
+on how much distance from the CBD matters for employment odds.
+
+**`firm_kappa` (kappa) identifies `long_term_share` most directly** -- it scales how
+aggressively firms convert expected profit into posted vacancies, which is the parameter that
+actually governs vacancy *supply*. A smoke test at `configs/baseline.yaml`'s default parameters
+(before any calibration) found `long_term_share` simulating at exactly 0.0000 against an
+empirical target of 77.44 per cent -- the same vacancy-abundant corner degeneracy already found
+in the matching-function analysis above, this time showing up as a calibration problem rather
+than a measurement problem: baseline's `firm_kappa=0.9` posts so many vacancies that almost
+nobody's search spell survives long enough to become long-term. A 20-point LHS-plus-Nelder-Mead
+smoke test (not the full campaign) pushed `firm_kappa` up to 1.26 and `initial_search_capital`
+up to 1.13, which brought `long_term_share` from 0.0000 to 0.56 against the 0.77 target -- real
+progress, not a full fix.
+
+**`search_cost_per_trip` (c) and `initial_search_capital` (W0) are the acknowledged weak spot.**
+Both move affordability in the same direction -- more capital or a cheaper trip both mean more
+searching before capital exhaustion -- so `discouraged_share` alone can't cleanly separate them;
+what identifies them apart is their *differential* effect on `long_term_share` (W0's absolute
+level matters for how long a spell can run) versus `transport_budget_share` (c enters that
+moment directly, W0 doesn't). The smoke test's own result illustrates the tension this creates:
+pushing W0 up to help `long_term_share` pulled `transport_budget_share` down to 0.036 against a
+0.106 target, worse than baseline's own 0.107 fit -- moving one parameter to fix one moment
+visibly cost fit quality on another, exactly the trade-off an exactly-identified system can't
+avoid when the moments pull in different directions.
+
+**`distance_gradient_slope` stayed almost entirely unexplained in the smoke test, and that's
+itself informative.** `firm_radius` was pushed to its lower search bound (1.1, against a 1.0-6.0 box)
+without getting anywhere near the 5.03 target, and the simulated value even came back with the
+wrong sign (-0.10). At `firm_radius` this small, on a 40-unit grid with townships 8-20 units from
+the CBD, very few search trips ever land inside any firm's catchment at all -- so few completed
+hires that the cross-sectional employment-by-distance regression is likely running on a handful
+of noisy observations, not a real signal. This is a boundary problem worth investigating before
+trusting the full campaign's `firm_radius` estimate, not a parameter search issue to just widen
+the bounds on and hope disappears.
+
+## The full campaign confirms the smoke test, and this is not yet a usable calibration
+
+Ran the real thing after the smoke test: 200 LHS points, 179 Nelder-Mead evaluations, 50
+validation seeds at the optimum, `configs/baseline.yaml` as the base -- roughly 19 minutes wall
+clock, in line with the throughput measured during the smoke test (0.226s per individual seeded
+run, slightly better than D4's own 0.332s benchmark).
+
+```
+calibrated parameters:
+  search_cost_per_trip = 0.029485
+  initial_search_capital = 1.458701
+  firm_radius = 1.156804
+  firm_kappa = 1.608181
+
+moments at optimum (validation seeds, n=50):
+  distance_gradient_slope: simulated=-0.3279 (se=0.0918)  empirical=5.0333 (se=1.4048)
+  discouraged_share:       simulated=0.1848 (se=0.0198)  empirical=0.1343 (se=0.0023)
+  transport_budget_share:  simulated=0.0649 (se=0.0117)  empirical=0.1058 (se=0.0055)
+  long_term_share:         simulated=0.5095 (se=0.0527)  empirical=0.7744 (se=0.0054)
+```
+
+**Two of the four bounds are actively binding.** `initial_search_capital` landed at 1.459
+against a 0.2-1.5 box -- 3 per cent from the wall. `firm_radius` landed at 1.157 against a
+1.0-6.0 box -- 16 per cent from the wall, and pinned in the same direction as the smoke test's
+independent 20-point run (1.105 there). An optimiser parked at its own box constraint has not
+found an interior optimum; it's reporting that the box was drawn in the wrong place. This is not
+a converged calibration result and shouldn't be read as one -- it's the engine's first real
+diagnostic pass, and what it diagnoses is that `DEFAULT_BOUNDS` needs revisiting, specifically
+widening `initial_search_capital`'s ceiling and considering whether `firm_radius` should be
+allowed smaller than 1.0, before the next attempt.
+
+**`distance_gradient_slope` is still the moment this model structurally cannot fit at these
+settings.** Wrong sign, small magnitude, exactly as the smoke test found -- consistent evidence
+across two independent searches that this isn't sampling noise. Widening `firm_radius`'s lower
+bound might let the optimiser find a smaller value, but the mechanism already suspected above
+(too few trips land in any firm's catchment for the cross-sectional regression to have a real
+signal at small radius) predicts that going smaller makes this moment *harder* to fit, not
+easier -- in which case the fix isn't a wider search box, it's diagnosing why the model's spatial
+mechanism doesn't reproduce this specific empirical pattern at all before spending more
+optimiser time on it.
+
+**What Week 4 actually delivers**: a calibration engine that's built, tested against known
+synthetic answers, and run once at full real scale without crashing or behaving
+non-deterministically -- and an honest, evidence-backed diagnosis of what's wrong with the first
+attempt, rather than a declared "calibration complete" sitting on top of two bound violations and
+an unfit moment. Fixing the bounds and diagnosing `distance_gradient_slope` are next session's
+first two items, not swept into a claimed result here.

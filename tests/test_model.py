@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-import pytest
-
 from src.config import Config
 from src.model import CityModel
 
@@ -106,10 +104,3 @@ def test_activation_order_robustness():
     shuffled_mean_u = shuffled["u"].tail(20).mean()
     fixed_mean_u = fixed["u"].tail(20).mean()
     assert abs(shuffled_mean_u - fixed_mean_u) <= 0.25 * BASE.n_agents
-
-
-def test_loss_determinism_placeholder():
-    """D12's common-random-numbers test belongs to calibrate.py, which doesn't exist yet
-    (Week 4). Placeholder so the requirement isn't forgotten -- fails loudly instead of
-    silently until it's implemented for real."""
-    pytest.skip("calibrate.py not built yet -- see DECISIONS.md D12")

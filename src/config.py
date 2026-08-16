@@ -93,3 +93,15 @@ class Config:
         DECISIONS.md on why quantising floats here would cause silent false-positive cache
         hits during Nelder-Mead's late, tiny-step contractions."""
         return json.dumps(asdict(self), sort_keys=True, separators=(",", ":"))
+
+
+# -- D12: common random numbers for the calibration search. One fixed seed list, reused at
+# every parameter evaluation during both the Latin hypercube and Nelder-Mead stages, so the
+# MSM loss is a deterministic function of the parameters being searched over -- without this,
+# the simplex can contract onto a random fluctuation in independently-redrawn seeds and report
+# a false convergence. VALIDATION_SEEDS is disjoint from CALIBRATION_SEEDS on purpose: the fit
+# quality reported at the optimum is never measured on the exact seeds the optimiser was
+# allowed to fit to. Plain integer ranges, not drawn from any RNG -- there's nothing to be
+# random about here, only fixed and disjoint.
+CALIBRATION_SEEDS: tuple[int, ...] = tuple(range(1, 16))  # 15 seeds, D12/prompt 4.2
+VALIDATION_SEEDS: tuple[int, ...] = tuple(range(1001, 1051))  # 50 seeds, disjoint from above
