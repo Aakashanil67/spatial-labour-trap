@@ -1093,3 +1093,35 @@ four free parameters, which were never going to reach a regime the structural ec
 entirely, but the separation rate this project already computed and correctly held back from a
 premature mid-week adoption. Adopting it now, with the re-checks that were always attached to
 that decision, is next session's first item, ahead of re-running the campaign.
+
+## The real separation rate, adopted, and both re-checks it was waiting on both came back clean
+
+`configs/baseline.yaml`'s `separation_rate` is now Week 3's own QLFS-panel SA rate (3.17 per
+cent monthly), not Miyamoto's Japanese fallback. Confirmed directly: the updated config settles
+into 2.55 per cent mean unemployment and a 23.3 per cent discouraged share over the last 30 per
+cent of a run -- the same order of magnitude as the real `discouraged_share` target (13.43 per
+cent) this project is trying to calibrate to, not the near-zero saturation the old rate produced.
+
+**`trace_demo.yaml`'s re-check.** Agent 32 under seed 5 no longer lives through exactly five
+cycles -- under the new economics it's a long stable employment spell (steps 15 to 83), then
+three tighter discouraged/re-entry cycles, and the run ends with the agent employed. Still a
+clean demonstration of locked commitment 6; the figure was regenerated and looks as clear as
+before.
+Not re-scanned for a different seed/agent pair, since this one still does the job -- the
+config's header comment now describes the actual trajectory rather than the original "five full
+cycles" count, which stopped being accurate the moment the separation rate changed.
+
+**The scarce-vacancy smoke test's re-check.** `configs/scarce_vacancies.yaml` and its subsidy
+arm now use the same real separation rate. Checked whether the population threshold that made
+this config vacancy-saturated still holds, rather than assuming it does: at `n_agents=18,000`,
+`fill_ratio` is still exactly 1.00, and `theta` is now *lower* than before (0.013 versus the
+original 0.19) -- firms post far fewer vacancies overall at the smaller `expected_value_per_hire`,
+so the same population is, if anything, more decisively scarce than it was. Re-ran the full
+five-seed comparison rather than trusting the old numbers: search intensity still rises on every
+seed (+1.5 to +15.0 per cent), vacancies and matches barely move (26.2 to 27.3, +4.3
+per cent), and unemployed count rises sharply (+34.7 to +41.5 per cent) -- the Banerjee-Sequeira
+sign pattern, if anything more decisive than the original finding. Employment moved up slightly
+more this time (mean +4.1 per cent across seeds, versus close to flat before) -- still small next
+to the intensity and unemployment movements, and worth noting rather than rounding away, since a
+future reader comparing this entry to the original smoke-test numbers should be able to see
+exactly what changed and why, not just a bare "still holds."

@@ -3,14 +3,15 @@
 # rather than a rounding difference. Everything else, including the seed, is identical, so any
 # difference in the resulting search intensity or employment numbers is attributable to this one
 # parameter -- not a paired-seed design (D12 is Week 4 work), just the sign-only check this
-# smoke test is scoped to.
+# smoke test is scoped to. separation_rate matches configs/scarce_vacancies.yaml and
+# baseline.yaml (2026-08-16: the real SA rate) -- see that file's header for why.
 
 n_agents: 18000
 n_vacancies: 15
 initial_search_capital: 0.6
 initial_capital_spread: 0.5
 search_cost_per_trip: 0.02
-separation_rate: 0.0048
+separation_rate: 0.0317 # QLFS-panel SA rate, notebook 03 -- matches baseline.yaml
 belief_multiplier: 1.0
 household_inflow: 0.008
 reentry_threshold: 0.035

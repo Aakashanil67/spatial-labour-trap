@@ -1,19 +1,24 @@
 # The Week 2 spatial baseline: real geography, endogenous firms, an AR(1) productivity shock.
-# Parameters are illustrative, not calibrated -- calibration is Week 4. separation_rate and
-# rho_A/sigma_A are the documented values from DECISIONS.md (Miyamoto's monthly fallback;
-# Chen 2025's AR(1) rebased from quarterly to monthly), not arbitrary.
+# Parameters are illustrative, not calibrated -- calibration is Week 4. rho_A/sigma_A are
+# Chen (2025)'s AR(1) rebased from quarterly to monthly; separation_rate is Week 3's own
+# QLFS-panel-derived SA rate (notebook 03), not a foreign fallback -- see DECISIONS.md.
 #
-# Hand-verified (2026-08-12): converges to a low-unemployment, moderately scarce-vacancy
-# regime with discouraged share responding to search_cost_per_trip (roughly 3-5% discouraged
-# across c in [0.01, 0.05]); no firm ever gets permanently locked out of posting (the
-# exploration-floor fix in agents.py); population conserved with firms present.
+# Re-verified (2026-08-16), superseding the earlier (2026-08-12) note below the old
+# separation_rate=0.0048 (Miyamoto's Japanese fallback): that value made
+# expected_value_per_hire so large (~32.6) that the model saturated near full employment
+# regardless of the other three free parameters, confirmed by sweeping firm_kappa across its
+# entire calibration search box and finding it converges to essentially the same near-total-
+# employment steady state everywhere in it. At the real SA rate, expected_value_per_hire drops
+# to ~6.05 and the market settles into a genuinely moderate, persistent regime instead: roughly
+# 1.6-3% unemployment and a substantial (~20%), persistent discouraged share, at this exact
+# firm_kappa=0.9. See DECISIONS.md, "A third door into the same deadlock class..."
 
 n_agents: 500
 n_vacancies: 15 # only used to seed each firm's initial vacancy count; ignored after step 1
 initial_search_capital: 0.6 # W0. Mean of the draw -- see initial_capital_spread below
 initial_capital_spread: 0.5 # coefficient of variation, lognormal -- prompt 3.1
 search_cost_per_trip: 0.02 # c -- flat/base component, see transport_cost_rate
-separation_rate: 0.0048 # lambda, monthly -- Miyamoto (2011)'s fallback; see DECISIONS.md
+separation_rate: 0.0317 # lambda, monthly -- QLFS-panel SA rate, notebook 03; see DECISIONS.md
 belief_multiplier: 1.0 # beta = 1.0 is the unbiased baseline
 household_inflow: 0.008 # g
 reentry_threshold: 0.035

@@ -1,8 +1,13 @@
-# Same parameters as configs/baseline.yaml, at a smaller N and a seed picked (by scanning
-# seeds 1-14 and checking every agent's full state history) specifically because agent 32
-# lives through five full search -> discouraged -> replenish -> re-entry -> hire cycles in
-# 150 steps -- the clearest available demonstration that locked commitment 6 (discouragement
-# is not absorbing) is actually implemented, not just asserted in a comment.
+# Same parameters as configs/baseline.yaml, at a smaller N and a seed originally picked (by
+# scanning seeds 1-14 and checking every agent's full state history) because agent 32 showed a
+# clean discouragement/re-entry cycle. Re-verified (2026-08-16) after baseline.yaml's
+# separation_rate moved from Miyamoto's fallback to Week 3's real SA rate: under the new
+# economics, agent 32 lives through a long stable employment spell (steps 15-83) followed by
+# three more discouraged/re-entry cycles, ending employed -- still the clearest available
+# demonstration that locked commitment 6 (discouragement is not absorbing) is actually
+# implemented, not just asserted in a comment, just not the identical trajectory the original
+# "five full cycles" description referred to. Not re-scanned for a new seed/agent pair, since
+# this one is still a clean, compelling illustration of the same mechanism.
 #
 # python -m src.diagnostics --config configs/trace_demo.yaml --trace-agent 32
 
@@ -11,7 +16,7 @@ n_vacancies: 15
 initial_search_capital: 0.6
 initial_capital_spread: 0.5
 search_cost_per_trip: 0.02
-separation_rate: 0.0048
+separation_rate: 0.0317 # QLFS-panel SA rate, notebook 03 -- see DECISIONS.md
 belief_multiplier: 1.0
 household_inflow: 0.008
 reentry_threshold: 0.035
