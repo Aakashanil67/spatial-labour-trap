@@ -994,3 +994,43 @@ non-deterministically -- and an honest, evidence-backed diagnosis of what's wron
 attempt, rather than a declared "calibration complete" sitting on top of two bound violations and
 an unfit moment. Fixing the bounds and diagnosing `distance_gradient_slope` are next session's
 first two items, not swept into a claimed result here.
+
+## The catchment-access guess above was wrong -- the real mechanism is an employment ceiling, and it explains the weight imbalance too
+
+Checked directly rather than left as a guess, the way every other mechanism claim in this file
+has been. Running the model at the calibrated point (`search_cost_per_trip=0.0295`,
+`initial_search_capital=1.459`, `firm_radius=1.157`, `firm_kappa=1.608`) and inspecting the
+actual run: 496 of 500 agents are `EMPLOYED` at the final step, and the employment count reaches
+roughly that level by step 16 and stays there for the remaining 134 steps
+(`l` sits at 493-496 from step 16 onward, `u` at 1-4). Splitting the final population into
+distance quartiles: 100.0 per cent employed in the nearest quartile, 98.4 per cent in the
+farthest -- a real difference, but far too small and far too close to a ceiling for a percentile-
+rank OLS fit to read as a stable slope rather than noise from whichever handful of agents happen
+to be the ones still unemployed. The "too few trips land in any firm's catchment" guess in the
+entry above was plausible-sounding and wrong; the actual problem is the opposite failure mode --
+almost everyone gets hired almost immediately at these parameters, so there's next to no
+cross-sectional variation left by the time `distance_gradient_slope` takes its snapshot.
+
+**This also explains why `firm_radius` drifted to a boundary in the first place, and it isn't
+really about `firm_radius` at all.** Computing each moment's actual loss weight at the reported
+optimum: `distance_gradient_slope` carries a weight of 0.50; `discouraged_share`, 2,517;
+`transport_budget_share`, 5,983; `long_term_share`, 356 -- `distance_gradient_slope` counts for
+somewhere between 700 and 12,000 times less than the other three, because Baez and Kshirsagar's
+own cross-city dispersion (used as the uncertainty proxy in notebook 04, since the source
+paper's real standard errors weren't recoverable) is enormous next to the other moments' tight
+survey-based standard errors. M9's weighting is implemented correctly -- this is what inverse-
+variance weighting is *supposed* to do with a target this uncertain -- but the practical
+consequence is that the optimiser has almost no reason to care what `firm_radius` does to
+`distance_gradient_slope` at all, and moves it only insofar as it happens to affect the other
+three moments through some other channel. A parameter search box being pinned near its edge
+looked like a real finding about `firm_radius`; it's actually a symptom of one moment's weight
+being negligible, which is a different problem with a different fix.
+
+**The honest version of "exactly identified, four parameters, four moments" needs a caveat now.**
+If one moment's weight is functionally near zero, its corresponding parameter isn't really being
+pinned down by the calibration in practice, whatever the parameter count says on paper. Either
+`distance_gradient_slope` needs a tighter, better-grounded uncertainty than a three-city sample
+standard deviation before it can carry real identifying weight, or the model chapter needs to
+say plainly that `firm_radius` is under-identified by this moment set as currently weighted --
+one of the two, not left implicit. Worth deciding before the bounds get widened and the campaign
+re-run, since widening `firm_radius`'s box won't fix a parameter the loss barely responds to.
