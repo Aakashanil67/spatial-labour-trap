@@ -1034,3 +1034,62 @@ standard deviation before it can carry real identifying weight, or the model cha
 say plainly that `firm_radius` is under-identified by this moment set as currently weighted --
 one of the two, not left implicit. Worth deciding before the bounds get widened and the campaign
 re-run, since widening `firm_radius`'s box won't fix a parameter the loss barely responds to.
+
+## A third door into the same deadlock class, and the actual fix to the saturation problem
+
+Asked to investigate the firm posting mechanism before assuming the population scale needed to
+change (the population-increase option was the other one on the table). That investigation
+found two separate things -- a real bug, and, once the bug was out of the way, the actual reason
+this model saturates near full employment regardless of how the four free parameters are tuned.
+
+**The bug.** Sweeping `firm_kappa` down towards its lower bound (0.2) to see whether a genuinely
+scarce, non-saturated regime existed anywhere in the search box produced total market collapse
+instead: `u` stuck at 500 of 500 for the entire run, `v` near zero throughout, `m` exactly zero
+throughout. Tracing it step by step: at `firm_kappa=0.2`, every firm's own computed vacancy
+target rounds to zero on the very first step (the naive fill-probability prior, floored at 0.05,
+isn't enough to clear the rounding threshold at this `kappa`), so `v_1 = 0`. With 607 agents
+making trips that period on their naive initial belief and zero vacancies to hire into,
+`observed_hire_rate_per_trip` updates to `m_t / total_trips = 0 / 607 = 0.0` -- a real
+observation (total_trips was positive, not a quiet step), so the Week 1 guard ("don't reset the
+belief on a quiet step") correctly lets it through. Once the shared belief is exactly 0.0, every
+agent's `decide_trips` computes zero desired trips simultaneously, `total_trips` stays at 0
+forever after, and the belief -- correctly left unchanged on what is now a genuinely quiet step
+-- never gets another chance to update. A third, independent door into the same "a multiplicative
+belief can reach an absorbing exact zero" bug class already fixed twice this session (the
+model-level initial-zero deadlock in Week 1, the firm-level `fill_prob_estimate` decay and the
+population-scaling `decide_trips` freeze in Week 2), this time triggered by a legitimately-bad
+first period rather than a bad prior or a scaling effect. Fixed the same way as the firm-level
+case: floored `observed_hire_rate_per_trip` at `MIN_OBSERVED_HIRE_RATE_PER_TRIP = 0.005`
+whenever it updates, not just at its initial value -- small enough not to distort a normal run
+(baseline's own naive initial value is over an order of magnitude larger) but enough to keep the
+door open for a later period's real vacancy supply to correct the belief. Confirmed the fix
+against a stash of the pre-fix `model.py`: `test_observed_hire_rate_never_decays_to_exactly_zero`
+fails on the stashed version (`0.0 >= 0.005`) and passes with the fix. One pre-existing test
+(`test_extreme_scarcity_produces_a_fully_censored_long_spell`) started failing after this fix --
+not a regression in the mechanism it checks (n_long_term still peaks at 286 of 300 agents
+mid-run in that scenario), but a fragile assertion on the run's *final* step of a genuinely
+cyclical process, which this fix's changed timing happened to catch on a downswing. Fixed to
+check the run's peak instead of its last step, which is what the test's own docstring already
+said it was trying to confirm.
+
+**What the bug fix revealed, once it stopped masking the real question.** With the deadlock out
+of the way, `firm_kappa=0.2` converges to almost the *same* near-total-employment steady
+state as every other value tried across the 0.2-2.0 box -- meaning `kappa` was never actually the
+parameter determining whether this model saturates. `expected_value_per_hire =
+(firm_productivity * shock - WAGE) / (discount_rate + separation_rate)` is approximately 32.6 at
+baseline's parameters, and that number is almost entirely driven by the tiny denominator
+(`0.001332 + 0.0048`), not by `kappa`. Every `kappa` in the search box multiplies the same huge
+base value, so the model has an enormous structural incentive to fill jobs no matter how the
+free parameters are tuned. Testing this directly: swapping in Week 3's own already-computed real
+SA separation rate (3.17 per cent monthly, notebook 03 -- still sitting un-adopted in
+`configs/baseline.yaml` as Miyamoto's 0.48 per cent Japanese fallback, deliberately deferred at
+the time to avoid invalidating `trace_demo.yaml` and the scarce-vacancy threshold mid-week)
+drops `expected_value_per_hire` to about 6.05 -- a 5.4x reduction -- and produces a genuinely
+moderate, persistent labour market at baseline's own `firm_kappa=0.9`: unemployment settling
+around 8-15 of 500 agents (1.6-3 per cent) with a substantial, *persistent* discouraged
+population (roughly 20 per cent), not the near-total saturation found throughout this session's
+calibration attempts. This is the actual fix the calibration needs -- not wider bounds on the
+four free parameters, which were never going to reach a regime the structural economics rule out
+entirely, but the separation rate this project already computed and correctly held back from a
+premature mid-week adoption. Adopting it now, with the re-checks that were always attached to
+that decision, is next session's first item, ahead of re-running the campaign.

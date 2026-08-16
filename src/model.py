@@ -44,6 +44,24 @@ from src.config import Config
 SPELL_BUCKET_EDGES_MONTHS = (3, 6, 9, 12, 36, 60)
 LONG_TERM_THRESHOLD_MONTHS = 12
 
+# Floor on the model-level observed_hire_rate_per_trip belief, the same "never let a
+# multiplicative belief reach an absorbing exact zero" principle already applied to Firm's
+# fill_prob_estimate (agents.py's _MIN_FILL_PROB). The Week 1 fix here was "don't reset the
+# belief to 0.0 on a QUIET step" -- correct, but it only guards the case where total_trips is
+# already 0. It does nothing when total_trips is genuinely positive but m_t is 0 because no
+# firm had posted a vacancy that period (found at low firm_kappa, where a firm's own computed
+# target can round to 0 on the very first step, before v_t is ever recorded): that update is a
+# real observation, so the "don't reset on a quiet step" guard correctly lets it through, and
+# observed_hire_rate_per_trip = 0 / total_trips = 0.0 exactly. Once at exact zero, every
+# subsequent decide_trips() call computes perceived_rate = 0, desired trips = 0 for the whole
+# population simultaneously, total_trips stays 0 forever after, and the belief is never updated
+# again -- a permanent, population-wide deadlock triggered by one unlucky first period, not a
+# bad starting prior. MIN_OBSERVED_HIRE_RATE_PER_TRIP is small enough not to distort a normal
+# run (baseline's own naive initial value, n_vacancies/n_agents, is over an order of magnitude
+# larger) but keeps the belief just above zero, so a later period with any real vacancy supply
+# still has a nonzero chance of generating a trip that could correct it.
+MIN_OBSERVED_HIRE_RATE_PER_TRIP = 0.005
+
 
 class CityModel(Model):
     def __init__(self, config: Config):
@@ -315,9 +333,15 @@ class CityModel(Model):
         # Only update the observed rate when this step actually produced an observation. A
         # step where nobody searched carries no information about the hire rate and should
         # leave the belief where it was -- resetting it to 0.0 here was a second real bug
-        # caught in Week 1 testing: it made a temporary all-quiet step permanent.
+        # caught in Week 1 testing: it made a temporary all-quiet step permanent. Flooring at
+        # MIN_OBSERVED_HIRE_RATE_PER_TRIP is a third, separate fix: total_trips > 0 with m_t
+        # == 0 is a real observation (nobody got hired that period), not a quiet step, so this
+        # branch correctly runs -- but letting it land on exactly 0.0 recreates the same
+        # permanent deadlock the guard above exists to prevent, just through a different door.
         if total_trips > 0:
-            self.observed_hire_rate_per_trip = m_t / total_trips
+            self.observed_hire_rate_per_trip = max(
+                MIN_OBSERVED_HIRE_RATE_PER_TRIP, m_t / total_trips
+            )
 
         mean_capital = sum(a.search_capital for a in self._seekers()) / cfg.n_agents
         self.history.append(
