@@ -1125,3 +1125,50 @@ more this time (mean +4.1 per cent across seeds, versus close to flat before) --
 to the intensity and unemployment movements, and worth noting rather than rounding away, since a
 future reader comparing this entry to the original smoke-test numbers should be able to see
 exactly what changed and why, not just a bare "still holds."
+
+## The re-run campaign: real progress, one moment still in genuine tension with the others
+
+Re-ran the full 200-point campaign against the corrected `baseline.yaml`. Real, measurable
+improvement over the first attempt: **no bound is pinned this time.**
+`search_cost_per_trip=0.0177`, `initial_search_capital=1.422`, `firm_radius=4.827` and
+`firm_kappa=1.574` all land inside their search boxes, not at a wall -- an actual interior
+optimum, not an optimiser reporting that the box was drawn wrong. Two of the four moments fit
+well: `discouraged_share` simulates at 0.1281 against an empirical 0.1343 (0.6pp off), and
+`transport_budget_share` simulates at 0.1103 against 0.1058 (0.5pp off) -- both a large
+improvement on the first attempt's 0.1848 and 0.0649.
+
+**`long_term_share` still simulates at exactly 0.0000, and this time the mechanism is clear,
+not just described as clear.** Inspecting the model at these exact parameters: mean unemployment
+(`u`) sits at only 13 agents, while mean hard-discouraged count sits at 72-92 -- `discouraged_share`
+is being fit almost entirely through the hard-discouragement channel, not through people staying
+in active search. With `firm_radius` nearly doubled from baseline's 2.5 to 4.827, an agent who
+re-enters `SEARCHING` gets matched quickly once they do, so `months_in_state` rarely has the
+chance to reach the 12-month `long_term_share` threshold before the spell ends one way or the
+other. The empirical target asks for both a large discouraged population *and* long spells among
+the (much smaller) group still actively searching -- two properties that, in this model's actual
+mechanics, currently pull against each other rather than being independently tunable: a
+`firm_radius` large enough to help `transport_budget_share` and `discouraged_share` fit well is
+also large enough to keep searching spells short.
+
+**`distance_gradient_slope` is still unfit (-1.52 against an empirical 5.03), still the wrong
+sign.** Consistent with the earlier diagnosis that this moment's own weight is functionally
+negligible (roughly three to four orders of magnitude below the other three) given
+`distance_gradient_slope`'s own large cross-city-dispersion uncertainty -- the optimiser has
+little reason to care what `firm_radius` does to this moment specifically, and moved it to 4.827
+for reasons connected to the other three moments, not this one.
+
+**Where this actually leaves Week 4.** A materially better calibration than the first attempt --
+an interior optimum, two moments fitting closely -- but not yet a usable one, and said plainly
+rather than rounded up to "done." The obvious next guess was tested directly rather than left as
+a guess: does `reentry_threshold` (currently fixed at baseline's 0.035, not one of the four free
+parameters) decouple the two moments, since it governs the `DISCOURAGED` -> `SEARCHING`
+transition? Swept it from 0.035 to 0.3 at the calibrated point: `long_term_share` stays at
+exactly 0.0000 throughout, while `discouraged_share` moves *away* from its target (0.1446 up to
+0.2952) as `reentry_threshold` rises. `reentry_threshold` was the wrong lever -- it governs how
+easily an agent re-enters search, not how long a search spell survives once re-entered.
+`long_term_share` needs months_in_state to reach 12 *while actively searching*, and at
+`firm_radius=4.827` an agent who does re-enter gets matched again quickly, so the spell ends
+long before 12 months regardless of how the discouragement side is tuned. The real tension is
+between `firm_radius` large enough to help the other three moments and `firm_radius` small
+enough to let a search spell actually run long -- narrower and more specific than "a fifth
+parameter might be needed," and the next thing to test directly rather than guess at.
