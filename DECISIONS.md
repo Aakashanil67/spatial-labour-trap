@@ -1310,3 +1310,84 @@ conversion, not a claim about how many days a month job search actually happens.
 notebook; the computed values (R20.96 mean daily cost, R4,300 monthly wage, 0.1058 point
 estimate, 0.0055 bootstrap SE) are unchanged, since nothing about the empirical computation
 itself was wrong -- only the model-side formula and this piece of the empirical-side prose were.
+
+## The QLFS separation-rate linkage needed a demographic consistency check, and the design variables needed auditing before trusting a plain bootstrap
+
+The 17 August audit's most consequential finding was in notebook 03, Part B. The raw
+`UQNO`+`PERSONNO` panel linkage that produced the 3.17 per cent monthly separation rate now
+adopted into `baseline.yaml` (see "The real separation rate, adopted...") contains implausible
+matches: a household code reassigned to a different person between quarters (a new household
+moving into a rotated-out dwelling, an enumerator data-entry slip, a genuine but rare within-
+household `PERSONNO` renumbering) reads as a spurious "employment transition" under the raw
+linkage, because the code has no way to tell a real transition from an identity error. Measured
+directly rather than assumed: over the full matched population in each quarter-pair (not just
+the employed subset), 314 gender mismatches and 735 implausible age changes (an age *decrease*,
+or an increase of two or more years across a roughly three-month gap) in 2025 Q2->Q3; 222 and
+521 in Q3->Q4; 214 and 516 in Q4->2026 Q1.
+
+**The fix requires stable recorded gender and a plausible age change (zero or one year) across
+each matched pair**, both fields every one of the four quarterly extracts carries. Restricted to
+the employed-in-t0 population the separation rate is actually computed over: 94/212 (gender/age)
+rejections out of 10,745 in Q2->Q3, 69/187 out of 10,822 in Q3->Q4, 66/177 out of 10,671 in
+Q4->2026 Q1 -- attrition of 1.8 to 2.1 per cent per pair. `Q15POPULATION` (population group) is
+also available and consistently coded across all four quarters, so it was checked for stability
+the same way: 37, 17 and 33 additional mismatches per pair, under 0.3 per cent of the employed
+subsample. Adding it as a third filter moves the pooled quarterly rate from 0.0861488108 to
+0.0861345569 -- a change in the fifth decimal place, both rounding to the same 0.0296 monthly --
+so it's reported for completeness but not applied: the frozen estimate below uses gender and age
+only, the two checks that actually explain the correction's size.
+
+**Pooled across all three pairs, the demographically-consistent quarterly rate is 0.0861488108**
+(was 0.0921049673 under the raw linkage), rebasing to a **monthly rate of 0.0295827815** (was
+0.0316956564) via the same compounding convention `rho_A` already uses. This is the central
+estimate now written into `configs/baseline.yaml`, `frictionless.yaml`, `trace_demo.yaml` and
+both `scarce_vacancies*.yaml` files as `0.0296`; the raw-link value (`0.0317`, unrounded
+0.0316956564) is kept as a documented upper robustness bound, not the value any config uses.
+Described in every config's header as "an approximate QLFS panel estimate," not "the official SA
+separation rate" -- see the design-variable audit below for exactly what it can't reproduce.
+
+**Design-variable audit, before choosing a resampling scheme.** Searched every one of the four
+quarterly files' full column lists and their Stata variable labels -- a design variable can sit
+under a name that doesn't say what it is, so names alone weren't enough -- for a rotation-group
+indicator, a primary sampling unit (PSU), an enumeration-area/cluster code, or a wave indicator.
+This extends the original audit, which checked only 2025 Q2: all four files carry `Stratum`/
+`STRATUM` and nothing else design-related. `UQNO` is used only as the household identifier it's
+documented to be (the linkage this notebook already relies on), never decoded for extra
+structure it isn't documented to carry.
+
+**The uncertainty estimate is now a household-cluster bootstrap, stratified by `Stratum`**, not
+an individual-record bootstrap treating each matched person as an independent draw. Cluster
+unit is (quarter-pair, `UQNO`) -- a household re-appearing in a later pair is a distinct cluster
+each time it's matched, never double-counted as one unit across pairs. Each of 2,000 replicates
+resamples, independently within every one of 248 strata, as many households as that stratum
+actually contributes, then pools every matched person in the resampled households. Result:
+quarterly bootstrap SE 0.001822, monthly bootstrap SE 0.000645, 95 per cent CI
+[0.02837, 0.03086] -- close to, not dramatically wider than, what an (incorrect) individual-
+record bootstrap on this same data would give, since the consistent sample averages only 1.33
+matched people per household. **This still doesn't reproduce StatsSA's own published panel
+non-response adjustment**, which needs rotation-group and PSU information neither this notebook
+nor its four source files has access to -- stated as a limitation, not smoothed over, in both
+the notebook and every config's header comment.
+
+**Both re-checks the earlier separation-rate adoption required, redone for this rate too.**
+`trace_demo.yaml`'s agent 32 was re-traced under 0.0296 rather than assumed unchanged from the
+0.0317 version: exact state transitions (from `model.trace_dataframe()`) are SEARCHING at step
+1, DISCOURAGED at 6, EMPLOYED at 15, DISCOURAGED at 24, EMPLOYED at 34, DISCOURAGED at 78 (a
+roughly 44-step stable spell), EMPLOYED at 87, DISCOURAGED at 97, EMPLOYED at 107, DISCOURAGED
+at 111, EMPLOYED at 121, running employed to the step-150 end -- five full discouragement/
+re-entry cycles, still a clean demonstration of locked commitment 6, figure regenerated and
+config header updated to describe this exact trajectory rather than the previous one.
+
+The scarce-vacancy smoke test was re-run in full across seeds 1-5, not spot-checked. `fill_ratio`
+is still exactly 1.00 in both arms on every seed -- vacancies remain the binding constraint, the
+condition the sign pattern needs. Search intensity rises sharply on every seed (+43.1 to
++54.1 per cent, versus +1.5 to +15.0 per cent under the previous 0.0317 re-check -- a
+substantially stronger signal, not a weaker one, under the lower rate). Vacancies and matches
+barely move and in either direction (-5.4 to +4.5 per cent; they move identically to each other,
+since a fill ratio pinned at 1.00 means matches are vacancies). Unemployed count rises sharply
+(+41.2 to +48.9 per cent) and `theta` falls in the subsidy arm on every seed (from 0.0126-0.0177
+down to 0.0084-0.0120). Employment moves by less than 5 per cent in either direction on every
+seed (-4.9 to +4.1 per cent) -- small next to the intensity and unemployment movements, the
+same "search intensity rises, employment barely moves" pattern Banerjee and Sequeira (2023)
+document, and if anything more decisive here than in either of the two earlier versions of this
+smoke test.

@@ -12,13 +12,22 @@
 # to ~6.05 and the market settles into a genuinely moderate, persistent regime instead: roughly
 # 1.6-3% unemployment and a substantial (~20%), persistent discouraged share, at this exact
 # firm_kappa=0.9. See DECISIONS.md, "A third door into the same deadlock class..."
+#
+# Corrected again (2026-08-17), following an independent verification: the raw UQNO+PERSONNO
+# QLFS linkage used to derive 0.0317 contained implausible matches (a household code reassigned
+# to a different person reads as a spurious employment transition). Requiring stable recorded
+# gender and a plausible age change across each matched pair gives a demographically-consistent
+# central estimate of 0.0296 (unrounded 0.0295827815); 0.0317 (unrounded 0.0316956564) is kept
+# as a documented upper robustness bound, not the value used here. See DECISIONS.md, "The QLFS
+# separation-rate linkage needed a demographic consistency check, and the design variables
+# needed auditing before trusting a plain bootstrap."
 
 n_agents: 500
 n_vacancies: 15 # only used to seed each firm's initial vacancy count; ignored after step 1
 initial_search_capital: 0.6 # W0. Mean of the draw -- see initial_capital_spread below
 initial_capital_spread: 0.5 # coefficient of variation, lognormal -- prompt 3.1
 search_cost_per_trip: 0.02 # c -- flat/base component, see transport_cost_rate
-separation_rate: 0.0317 # lambda, monthly -- QLFS-panel SA rate, notebook 03; see DECISIONS.md
+separation_rate: 0.0296 # lambda, monthly -- QLFS-panel central estimate, notebook 03; see DECISIONS.md
 belief_multiplier: 1.0 # beta = 1.0 is the unbiased baseline
 household_inflow: 0.008 # g
 reentry_threshold: 0.035

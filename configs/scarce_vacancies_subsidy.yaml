@@ -11,7 +11,7 @@ n_vacancies: 15
 initial_search_capital: 0.6
 initial_capital_spread: 0.5
 search_cost_per_trip: 0.02
-separation_rate: 0.0317 # QLFS-panel SA rate, notebook 03 -- matches baseline.yaml
+separation_rate: 0.0296 # QLFS-panel central estimate, notebook 03 -- matches baseline.yaml
 belief_multiplier: 1.0
 household_inflow: 0.008
 reentry_threshold: 0.035
