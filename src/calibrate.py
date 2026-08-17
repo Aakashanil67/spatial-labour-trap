@@ -30,8 +30,12 @@ reported optimum, so the fit quality isn't measured on the seeds the optimiser f
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import subprocess
 import sys
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -477,12 +481,97 @@ def calibrate(
     )
 
 
+def _sha256_file(path: str) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _git_commit_hash() -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+def _write_published_outputs(
+    out_dir: str,
+    config_path: str,
+    moments_path: str,
+    base: Config,
+    empirical: EmpiricalMoments,
+    result: CalibrationResult,
+) -> None:
+    """Task 8's fingerprinted outputs: an unrounded parameter/status record a reader can
+    identify the exact run from without a chat transcript or local session log, and a per-
+    moment fit table with standardised residuals."""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    fingerprint = {
+        "code_commit": _git_commit_hash(),
+        "moments_csv_sha256": _sha256_file(moments_path),
+        "config_path": config_path,
+        "config_canonical_json": base.canonical_json(),
+        "calibration_seeds": list(CALIBRATION_SEEDS),
+        "validation_seeds": list(VALIDATION_SEEDS),
+    }
+    weights_record = None
+    if result.weights is not None:
+        weights_record = {
+            "moment_keys": list(result.weights.moment_keys),
+            "weight_matrix": result.weights.weight_matrix.tolist(),
+            "estimated_at_params": result.weights.estimated_at_params,
+            "weight_seeds": list(result.weights.weight_seeds),
+            "ridge": result.weights.ridge,
+        }
+
+    record = {
+        "fingerprint": fingerprint,
+        "params": result.params,
+        "preliminary_params": result.preliminary_params,
+        "loss_at_optimum": result.loss_at_optimum,
+        "lhs_best_loss": result.lhs_best_loss,
+        "n_lhs_points": result.n_lhs_points,
+        "n_nelder_mead_evaluations": result.n_nelder_mead_evaluations,
+        "success": result.success,
+        "message": result.message,
+        "selected_restart_index": result.selected_restart_index,
+        "n_restarts": result.n_restarts,
+        "n_converged_restarts": result.n_converged_restarts,
+        "boundary_adjacent_params": list(result.boundary_adjacent_params),
+        "weights": weights_record,
+    }
+    (out / "calibration_result.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+
+    rows = []
+    for key in MOMENT_KEYS:
+        sim_mean, sim_var = result.validation_moments[key]
+        data_value = empirical.values[key]
+        data_se = empirical.standard_errors[key]
+        residual_se = float(np.sqrt(data_se**2 + sim_var))
+        standardized_residual = (
+            (sim_mean - data_value) / residual_se if residual_se > 0 else float("nan")
+        )
+        rows.append(
+            {
+                "moment": key,
+                "simulated_mean": sim_mean,
+                "simulated_se": float(np.sqrt(sim_var)),
+                "empirical_value": data_value,
+                "empirical_se": data_se,
+                "standardized_residual": standardized_residual,
+            }
+        )
+    pd.DataFrame(rows).to_csv(out / "calibration_fit.csv", index=False)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Calibrate the four free parameters by MSM.")
     parser.add_argument("--config", required=True, help="base YAML config (spatial, n_firms>0)")
     parser.add_argument("--moments", default="data/moments.csv", help="empirical moments CSV")
     parser.add_argument("--n-lhs-points", type=int, default=200)
     parser.add_argument("--n-restarts", type=int, default=3)
+    parser.add_argument(
+        "--out-dir", default=None, help="write calibration_result.json/calibration_fit.csv here"
+    )
     args = parser.parse_args(argv)
 
     base = Config.from_yaml(args.config)
@@ -490,6 +579,9 @@ def main(argv: list[str] | None = None) -> int:
     result = calibrate(
         base, n_lhs_points=args.n_lhs_points, n_restarts=args.n_restarts, empirical=empirical
     )
+
+    if args.out_dir:
+        _write_published_outputs(args.out_dir, args.config, args.moments, base, empirical, result)
 
     print(f"base config: {args.config}")
     print(f"LHS points: {result.n_lhs_points}  (best loss {result.lhs_best_loss:.6f})")

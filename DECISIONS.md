@@ -1574,3 +1574,85 @@ to the version already on disk (confirmed by `git status` showing no diff) -- SH
 `a5a06088f372efca836cc67354ae57fe5887a40fbb6b31a12149e3de7272d32f` -- which is itself a real
 reproducibility check: the same four notebooks, run fresh from the same source data, with the
 only change being *how* they locate that data, reproduce every earlier number exactly.
+
+## The corrected campaign, run once, fails the no-false-success gate on two independent grounds -- an honest structural rejection, not a bug
+
+The full campaign ran against `configs/baseline.yaml`, commit `c854f84759bc17c0e96a20368bf9824abd47f2d6`,
+`data/moments.csv` SHA-256 `a5a06088f372efca836cc67354ae57fe5887a40fbb6b31a12149e3de7272d32f`: 200
+Latin-hypercube points, three Nelder-Mead restarts, both weight stages (W0 then W1 at 50 disjoint
+`WEIGHT_SEEDS`), 50 disjoint `VALIDATION_SEEDS` at the reported optimum -- the exact specification
+Task 8 calls for, unrounded results and full optimiser status written to
+`results/published/calibration_result.json` and `results/published/calibration_fit.csv`. All
+three restarts converged (`success=True`, "Optimization terminated successfully").
+
+**The result itself does not clear the gate.** Two of the four conditions Task 8 names as
+disqualifying both hold:
+
+- `search_cost_per_trip = 0.005` sits exactly at its lower bound, and `firm_radius = 1.0052`
+  sits within 0.5 per cent of its own lower bound (1.0) -- both flagged by
+  `CalibrationResult.boundary_adjacent_params`, both weakly identified rather than genuine
+  interior estimates.
+- `long_term_share` simulates at exactly `0.0000` against an empirical `0.7744`, the same
+  "target the model cannot generate at all" failure mode the gate names explicitly, not a
+  target that merely missed by a wide margin.
+
+**`transport_budget_share` is also badly off** (simulated `1.1131` against empirical `0.1058`,
+a standardised residual of roughly +44) -- confirming what "The size of the correction is the
+actual finding" (Task 3's entry above) predicted before this campaign ever ran: the corrected,
+conditional-daily estimand is roughly an order of magnitude larger than what the old formula's
+apparent 0.5pp fit was actually measuring, and the model cannot reach it within
+`search_cost_per_trip`'s current box even at the box's own floor.
+
+**The preliminary (W0) and final (W1) optima disagree about which corner to sit in, and the
+weight matrix explains why.** W0 (data variance alone) found `firm_radius = 3.809` -- close to
+the old, geometrically-flat region this remediation already fixed in Task 5. W1 (data variance
+plus the simulation covariance estimated at that W0 point) moved the search to the *opposite*
+corner, `firm_radius = 1.005`. The fitted `W1` weight matrix explains the pull:
+`discouraged_share` carries a weight of roughly 157,520 and `transport_budget_share` roughly
+4,480, while `distance_gradient_slope` carries roughly 0.5 -- four to five orders of magnitude
+apart. With `distance_gradient_slope` functionally weightless (consistent with "the weight
+imbalance" already diagnosed pre-remediation), the search reduces to satisfying
+`discouraged_share` and `transport_budget_share` as best it can, and the corner that best serves
+those two happens to be the one where `firm_radius` and `search_cost_per_trip` are both pinned
+low, not the corner that helps `long_term_share`.
+
+**The response-surface diagnosis Task 8 asks for, run directly rather than assumed.** Held
+`initial_search_capital` and `firm_kappa` at their calibrated values and swept the three
+admissible levers one at a time: `firm_radius` across its entire box (1.0 to 4.0, seven points),
+`separation_rate` (lambda) from 0.015 to 0.06, and `household_inflow` (g) from 0.004 to 0.032 --
+five common-random-number seeds per point for speed, full results in
+`results/published/long_term_share_response_surface.json`. **`long_term_share` simulates at
+exactly `0.0000` at every one of the fifteen points tried, with no exception.** This is a
+stronger finding than the pre-remediation diagnosis ("a `firm_radius` trade-off"): under the
+corrected sampling and bounds, there is no trade-off to navigate -- the moment is unreachable
+across the whole tested admissible region, not merely difficult to reach without cost elsewhere.
+
+**Why, mechanically:** ran the model once at the calibrated point (seed 42, post-burn-in window)
+and inspected it directly rather than guessing. Mean active-searcher count (`u`) is only 18 of
+500 agents; mean discouraged count is 120; mean employed is 362. Among agents *currently*
+searching, the longest any of them has been in that state is 4 months -- nobody has ever come
+close to the 12-month `long_term_share` threshold. `discouraged_share` is being fit almost
+entirely through the discouragement channel (as the pre-remediation diagnosis already found),
+and whenever an agent *is* actively searching, the match rate relative to that small pool is
+high enough (mean 11.1 matches against a mean searching pool of 18) that spells resolve in a
+handful of months. Sweeping `firm_radius`, `separation_rate` and `household_inflow` all move
+`u`, `discouraged`, and the match rate together, but none of them, across the ranges tried,
+produces a regime where a meaningful number of agents search continuously for a year.
+
+**Per Task 8's no-false-success gate and the plan's completion definition, this calibration is
+not usable as a headline result.** Not from a bug -- every correction in Tasks 1 through 7 is
+implemented and verified, the notebooks reproduce byte-identical inputs, the optimiser converged
+on all three restarts, and the response surface was actually swept, not assumed empty. The
+finding is that this model, as specified, cannot simultaneously sustain the empirical
+combination of a large discouraged population *and* long active-search spells within the
+current four-parameter mapping. **The mechanism question for Aakash and the supervisor**,
+prepared rather than answered unilaterally: the model's search-intensity margin (trips per
+period, M5) and matching mechanics currently let any agent who resumes active search get
+matched quickly once vacancies exist at all, so nothing in the current mechanism can produce a
+long *active* search spell independent of the discouragement channel -- closing that gap would
+need either a fifth free parameter (reopening the "exactly identified, four parameters, four
+moments" framing this project has held since the build plan was written) or a different
+mechanism entirely (a reservation-wage margin, match quality heterogeneity, or something else),
+neither of which this remediation adds without that conversation happening first, per the plan's
+explicit instruction. Week 5 policy work does not proceed on this calibration as though it were
+usable, per the plan's completion definition.
