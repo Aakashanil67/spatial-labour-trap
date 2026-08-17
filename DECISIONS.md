@@ -1172,3 +1172,37 @@ long before 12 months regardless of how the discouragement side is tuned. The re
 between `firm_radius` large enough to help the other three moments and `firm_radius` small
 enough to let a search spell actually run long -- narrower and more specific than "a fifth
 parameter might be needed," and the next thing to test directly rather than guess at.
+
+## An independent verification on 17 August found the frictionless config drifted, and it invalidates delta_a=-0.0025
+
+An independent verification pass over this repository, run on 17 August 2026 before any Week 5
+work started, found that `frictionless.yaml` had drifted out from under its own stated purpose.
+Its header comment still read "identical in every field except `transport_cost_rate`," but its
+`separation_rate` had been left at Miyamoto's Japanese fallback (0.0048) through the session
+that moved `baseline.yaml` onto the QLFS-derived SA rate (0.0317, see "The real separation
+rate, adopted..." above). Nobody edited `frictionless.yaml` in that session because nothing told
+them to -- the two files are supposed to be identical apart from one field, so a change to one
+should have meant an identical change to the other, and didn't.
+
+That means every `delta_a = a(friction) - a(frictionless)` computed since then, including the
+`mean delta_a = -0.0025`, 95% interval `[-0.025, +0.009]` reported above, compared two economies
+that differed in **two** channels at once: transport cost, which SQ1 is actually about, and
+separation rate, which changes `expected_value_per_hire` and therefore the entire vacancy-posting
+regime (see "A third door into the same deadlock class..."). A near-zero, CI-straddles-zero
+result computed under a confound isn't evidence of anything -- it's exactly what a shared, silent
+bug looks like. **The `-0.0025` figure above is invalidated by configuration drift, not by a
+finding about matching efficiency, and is kept here as a labelled failed result rather than
+deleted.** `frictionless.yaml` is now resynchronised to `baseline.yaml`'s separation rate, and
+`tests/test_configs.py` asserts the two files can never diverge on anything but
+`transport_cost_rate` again -- this specific silent-drift failure mode gets a regression test,
+the same discipline applied to every other bug class in this project.
+
+The audit's independently measured constrained matching efficiencies at seed 42 make the size of
+the confound concrete: `0.963283` for `baseline.yaml`, `1.000000` for the committed (stale)
+`frictionless.yaml`, and `0.953347` for a frictionless config corrected to match baseline's
+separation rate -- and that corrected run rejects constant returns at the five per cent level,
+which the stale comparison's near-1.0 both-arms reading had been masking. SQ1 is rebuilt properly
+in a later stage of this remediation (Task 7 of the verification plan), with paired seeds and a
+CRS gate that refuses to report a constrained `delta_a` when either arm's returns-to-scale
+assumption fails; this section exists so the superseded number stops circulating as if it still
+meant something.
