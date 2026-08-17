@@ -24,6 +24,15 @@ results/cache/
 results/figures/
 notebooks/moments/*.html
 
+# results/published/ is the one results/ subtree meant to be committed (Task 7 of the
+# verification remediation plan): SQ1's per-seed table and summary, and any other small,
+# deliberately-selected aggregate output. Ignore everything in it by default, then allowlist
+# only the file types that belong there, so a stray cache dump or exploratory figure written
+# into the same directory doesn't get committed by a bare `git add`.
+results/published/*
+!results/published/*.csv
+!results/published/*.json
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db

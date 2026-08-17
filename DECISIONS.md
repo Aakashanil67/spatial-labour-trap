@@ -1501,3 +1501,55 @@ This roughly doubles the wall-clock cost of a campaign (two full search stages i
 each with up to three restarts instead of one Nelder-Mead run), so D4's performance gate needs
 re-checking against the real cost once Task 8 runs the corrected campaign -- flagged here rather
 than discovered as a surprise during that run.
+
+## SQ1 is now a one-command, paired-seed CLI that refuses to report a constrained delta_a it can't stand behind
+
+Every earlier SQ1 number in this file (the smoke test, "matching.py, the first SQ1 number...",
+"An independent verification... invalidates delta_a=-0.0025") was produced by an ad hoc script
+written for that session, never committed, never reusable without retyping the whole comparison
+by hand. `src/sq1.py` replaces all of that with one command:
+
+```
+python -m src.sq1 --baseline configs/baseline.yaml --frictionless configs/frictionless.yaml \
+    --seeds 1:20 --out-dir results/published
+```
+
+**Refuses to run against a bad config pair, before touching a single seed.** Both YAML files are
+loaded as plain dictionaries (not `Config` instances, so a field one file omits entirely stays
+visible) and compared; anything other than exactly `transport_cost_rate` differing raises a
+`ValueError` naming the actual diff. This is the direct fix for the failure mode that produced
+the invalidated `delta_a=-0.0025` figure -- that comparison ran without anyone checking the two
+files still agreed on everything else.
+
+**Constant returns is tested per seed per arm, not assumed once.** For every seed,
+`matching.fit_matching_function` runs on both arms' post-burn-in windows; a seed only
+contributes a `delta_a_constrained` if CRS is NOT rejected in *either* arm at that seed. The
+unconstrained `delta_a` (elasticities and intercept, no CRS restriction) is computed for every
+seed regardless, as the sensitivity check Task 7 asks for.
+
+**The headline gate is a real hypothesis test, not an eyeball threshold.** For each arm
+separately, an exact one-sided binomial test (`scipy.stats.binomtest`) asks whether that arm's
+observed CRS-rejection count over `n` seeds is higher than the test's own nominal size (`alpha`,
+default 0.05) would produce by chance if CRS genuinely held everywhere. If either arm's
+binomial p-value is below `alpha`, `constrained_headline_reportable` is `False` and the printed
+summary states the honest finding plainly: the assumed Cobb-Douglas matching technology does not
+survive constant-returns testing often enough in at least one arm to trust a constrained
+`delta_a`, and reporting one anyway would misrepresent an unidentified quantity as a clean
+result. The per-seed CSV (`sq1_seed_results.csv`) and summary JSON (`sq1_summary.json`) are
+written either way -- both arms' full elasticities, intercepts, Wald p-values, and the
+CRS-survives-both flag, plus the paired unconstrained sensitivity figures, are the honest
+descriptive record regardless of whether the constrained headline clears the gate.
+
+**`.gitignore` now allowlists `results/published/*.csv` and `*.json` specifically**, rather than
+leaving the whole `results/` tree either fully tracked or fully ignored -- `results/cache/` and
+`results/figures/` stay ignored as before, and nothing written into `results/published/` by
+accident (a stray cache dump, an exploratory figure) becomes committable just by sitting in the
+same directory as the two files this task actually produces. Neither output file contains
+per-agent or per-record data -- both are aggregate regression statistics (elasticities,
+p-values, fitted efficiencies) over a completed run's own `(u, v, m)` time series, confirmed by
+inspecting the actual column list, not assumed from the code alone.
+
+Task 8 runs this against the corrected `baseline.yaml`/`frictionless.yaml` pair (Tasks 1 and 4)
+and the corrected spatial sampling (Task 5) for the first time; whatever it reports there is the
+real SQ1 headline (or the real "Cobb-Douglas doesn't survive" finding), superseding every
+earlier number in this file regardless of this task's own changes.
