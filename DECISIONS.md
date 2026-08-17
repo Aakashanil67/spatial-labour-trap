@@ -1391,3 +1391,53 @@ seed (-4.9 to +4.1 per cent) -- small next to the intensity and unemployment mov
 same "search intensity rises, employment barely moves" pattern Banerjee and Sequeira (2023)
 document, and if anything more decisive here than in either of the two earlier versions of this
 smoke test.
+
+## The search-position draw oversampled the CBD centre, and it explains the flat firm_radius calibration region
+
+The 17 August audit's sixth finding: at the reported calibrated values, changing `firm_radius`
+from 4.1 to 6.0 produced identical simulation histories and identical moments at seed 42. The
+cause was a sampling bug, not a genuine flat spot in the model's economics. `agents.py`'s
+`search_positions()` drew a ticket's radius as `cbd_radius * belief_multiplier * U`, uniform
+over the *radius*, while `model.py`'s firm placement already drew `cbd_radius * sqrt(U)`,
+uniform over the disk's *area* -- the two draws that are supposed to describe the same
+CBD-zone geography used different distributions. A uniform-radius draw packs samples near the
+centre (mean radius `R/2`); a uniform-area draw doesn't (mean radius `2R/3`). Confirmed directly
+with a 10,000-draw fixed-seed test before touching the fix: `test_search_positions_are_uniform_
+over_the_cbd_disk_area_not_the_radius` measured a mean radius of 2.499 at `cbd_radius=5.0`
+against the `R/2` value of 2.5, not the correct `2R/3` value of 3.333. Fixed to
+`cbd_radius * belief_multiplier * sqrt(U)`, matching the firm draw; angle sampling and
+`belief_multiplier`'s own role (scaling the radius for D2's targeting-bias mechanism) are
+untouched.
+
+**The consequence for `firm_radius` identification is geometric, not statistical.** With
+`belief_multiplier=1` (D2's unbiased case), both search tickets and firms are now confirmed to
+be drawn uniformly within the same disk of radius `cbd_radius` around the CBD, so no ticket-firm
+pair can ever be more than `2 * cbd_radius` apart. A `firm_radius` at or beyond that diameter
+makes every firm reachable from every ticket regardless of its exact value -- the calibration
+loss stops responding to `firm_radius` at all past that point, which is exactly the flat region
+the audit measured (4.1 and 6.0 both sit past `2 * 2.0 = 4.0`, `baseline.yaml`'s diameter).
+`calibrate.py`'s `DEFAULT_BOUNDS` for `firm_radius` is now `(1.0, 4.0)`, not `(1.0, 6.0)`, and a
+new `_validate_firm_radius_bound()` check raises `ValueError` if a caller supplies a wider upper
+bound than `2 * base.cbd_radius` while `belief_multiplier == 1` -- explaining, in the error
+itself, that every ticket-firm pair becomes reachable past that point. A separate,
+deterministic regression test (`test_firm_radius_beyond_the_geometric_maximum_is_a_flat_region`)
+keeps two calibration-irrelevant values (4.1 and 6.0) producing byte-identical histories, to
+document why they're excluded rather than to legitimise them as a search domain.
+
+`CalibrationResult` also now carries `boundary_adjacent_params`: any parameter landing within
+one per cent of either edge of its own search box is flagged there, whether or not it happens to
+be `firm_radius` -- a numerical estimate that close to a wall is weakly identified regardless of
+whether the box itself is geometrically well-posed, and Task 8's no-false-success gate needs
+this signal available on every `CalibrationResult`, not computed ad hoc after the fact.
+
+**This directly supersedes "The re-run campaign" section's `firm_radius=4.827` finding above.**
+That section described `firm_radius=4.827` landing "inside its search box, not at a wall -- an
+actual interior optimum, not an optimiser reporting that the box was drawn wrong." Under the
+corrected geometry, `4.827` is *past* the `4.0` diameter -- squarely inside the flat,
+unidentified region the old `(1.0, 6.0)` box wrongly made searchable, not an interior optimum at
+all. Every specific number that section reports (the two "well-fit" moments, the `long_term_share`
+tension diagnosis, the `reentry_threshold` sweep) was measured at a parameter point now known to
+be geometrically meaningless for `firm_radius` specifically, and needs re-measuring under the
+corrected sampling and the corrected `(1.0, 4.0)` box -- done in Task 8 of the verification
+remediation plan, not here, since it also depends on Tasks 6 and 7's changes to the calibration
+engine and SQ1 machinery landing first.

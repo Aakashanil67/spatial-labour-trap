@@ -156,7 +156,11 @@ class JobSeeker(Agent):
         model = self.model
         positions = []
         for _ in range(self.trips_this_step):
-            radius = cfg.cbd_radius * cfg.belief_multiplier * model.rng.uniform(0.0, 1.0)
+            # sqrt(U), not U -- a uniform draw over the RADIUS packs samples near the centre;
+            # sqrt(U) is uniform over the disk's AREA, matching the firm-placement draw in
+            # model.py. See DECISIONS.md, "The search-position draw oversampled the CBD centre,
+            # and it explains the flat firm_radius calibration region."
+            radius = cfg.cbd_radius * cfg.belief_multiplier * math.sqrt(model.rng.uniform(0.0, 1.0))
             angle = model.rng.uniform(0.0, 2 * math.pi)
             x = model.cbd_x + radius * math.cos(angle)
             y = model.cbd_y + radius * math.sin(angle)

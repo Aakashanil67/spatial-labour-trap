@@ -41,12 +41,26 @@ PARAM_NAMES: tuple[str, ...] = (
 
 # Wide enough to let the optimiser move, centred on baseline.yaml's own already-validated
 # values, not picked from nothing -- see configs/baseline.yaml for what those are.
+#
+# firm_radius's upper bound is 2 * baseline.yaml's cbd_radius (2.0) = 4.0, not 6.0: with
+# belief_multiplier=1, search tickets and firms are both drawn uniformly within a disk of
+# radius cbd_radius, so no ticket-firm pair can ever be more than 2*cbd_radius apart. A bound
+# past that diameter makes every firm reachable from every ticket regardless of firm_radius's
+# exact value -- the loss stops responding to it entirely, which is exactly what the audit
+# found: firm_radius=4.1 and 6.0 produced identical histories at the reported calibrated
+# values. See DECISIONS.md, "The search-position draw oversampled the CBD centre, and it
+# explains the flat firm_radius calibration region."
 DEFAULT_BOUNDS: dict[str, tuple[float, float]] = {
     "search_cost_per_trip": (0.005, 0.05),
     "initial_search_capital": (0.2, 1.5),
-    "firm_radius": (1.0, 6.0),
+    "firm_radius": (1.0, 4.0),
     "firm_kappa": (0.2, 2.0),
 }
+
+# A calibrated estimate this close to a bound (as a fraction of the bound's own magnitude) is
+# reported as boundary-adjacent and weakly identified, not treated as a genuine interior
+# optimum merely because its floating-point value happens to sit inside the box.
+_BOUNDARY_ADJACENCY_FRACTION = 0.01
 
 MOMENT_KEYS: tuple[str, ...] = (
     "distance_gradient_slope",
@@ -158,6 +172,51 @@ class CalibrationResult:
     validation_moments: dict[str, tuple[float, float]]  # (mean, variance_of_mean), 50 seeds
     n_lhs_points: int
     n_nelder_mead_evaluations: int
+    # Parameter names whose calibrated value sits within _BOUNDARY_ADJACENCY_FRACTION of either
+    # edge of its search box -- weakly identified, not a genuine interior optimum. Empty on a
+    # clean run; a non-empty tuple is itself a finding, not something to round away.
+    boundary_adjacent_params: tuple[str, ...] = ()
+
+
+def _validate_firm_radius_bound(base: Config, bounds: dict[str, tuple[float, float]]) -> None:
+    """Rejects a firm_radius upper bound past the geometric identification limit. With
+    belief_multiplier=1 (D2's unbiased disk), both search tickets (agents.py's
+    search_positions()) and firms (model.py's firm placement) are drawn uniformly within a
+    disk of radius cbd_radius around the CBD, so no ticket-firm pair can ever be more than
+    2*cbd_radius apart. A firm_radius at or beyond that diameter makes every firm reachable
+    from every ticket regardless of its exact value: the calibration loss stops responding to
+    firm_radius at all, and any estimate the optimiser reports there is an artefact of a
+    mis-specified search box, not a genuine finding. Skipped when belief_multiplier != 1, since
+    a biased search radius scales the ticket-side disk too and the same geometric argument no
+    longer applies directly."""
+    if base.belief_multiplier != 1.0:
+        return
+    geometric_max = 2 * base.cbd_radius
+    upper = bounds["firm_radius"][1]
+    if upper > geometric_max:
+        raise ValueError(
+            f"firm_radius upper bound {upper} exceeds the geometric identification limit "
+            f"2 * cbd_radius = {geometric_max}: beyond this point every ticket-firm pair is "
+            "within reach regardless of firm_radius's exact value, so the calibration loss "
+            "goes flat there and any resulting estimate is unidentified, not a genuine "
+            "optimum. Lower the bound or raise cbd_radius."
+        )
+
+
+def _boundary_adjacent_params(
+    params: dict[str, float], bounds: dict[str, tuple[float, float]]
+) -> tuple[str, ...]:
+    """Flags a parameter within _BOUNDARY_ADJACENCY_FRACTION of a bound's own magnitude (not
+    the box's span) -- matching Task 8's no-false-success gate, "within one per cent of its
+    numerical or geometric bound," literally."""
+    flagged = []
+    for name, value in params.items():
+        low, high = bounds[name]
+        near_low = abs(value - low) <= _BOUNDARY_ADJACENCY_FRACTION * abs(low)
+        near_high = abs(value - high) <= _BOUNDARY_ADJACENCY_FRACTION * abs(high)
+        if near_low or near_high:
+            flagged.append(name)
+    return tuple(flagged)
 
 
 def _lhs_points(bounds: dict[str, tuple[float, float]], n_points: int) -> list[dict[str, float]]:
@@ -183,6 +242,7 @@ def calibrate(
     optimiser was allowed to fit to."""
     bounds = bounds or DEFAULT_BOUNDS
     empirical = empirical or load_empirical_moments()
+    _validate_firm_radius_bound(base, bounds)
 
     lhs_params = _lhs_points(bounds, n_lhs_points)
     lhs_losses = [
@@ -213,6 +273,7 @@ def calibrate(
         validation_moments=validation_moments,
         n_lhs_points=n_lhs_points,
         n_nelder_mead_evaluations=int(nm_result.nfev),
+        boundary_adjacent_params=_boundary_adjacent_params(final_params, bounds),
     )
 
 
@@ -235,6 +296,11 @@ def main(argv: list[str] | None = None) -> int:
     print("calibrated parameters:")
     for name, value in result.params.items():
         print(f"  {name} = {value:.6f}")
+    if result.boundary_adjacent_params:
+        print(
+            f"  WARNING: boundary-adjacent (within 1% of a bound), weakly identified: "
+            f"{', '.join(result.boundary_adjacent_params)}"
+        )
     print()
     print(f"moments at optimum (validation seeds, n={len(VALIDATION_SEEDS)}):")
     for key in MOMENT_KEYS:

@@ -7,11 +7,14 @@ unit coverage for the pieces that don't need a real optimisation run to check.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from src.calibrate import (
+    DEFAULT_BOUNDS,
     MOMENT_KEYS,
     PARAM_NAMES,
     EmpiricalMoments,
@@ -35,7 +38,10 @@ SMALL = Config(
     n_steps=60,
     seed=1,
     grid_size=20,
-    cbd_radius=1.0,
+    # 2.0, matching baseline.yaml -- the geometric-identification bound (2 * cbd_radius, see
+    # calibrate.py's _validate_firm_radius_bound) must comfortably clear the recovery test's
+    # own tight_bounds firm_radius upper of 3.0 below.
+    cbd_radius=2.0,
     n_townships=3,
     township_distance_min=4.0,
     township_distance_max=10.0,
@@ -121,6 +127,53 @@ def test_simulate_moments_returns_all_four_keys_with_finite_variance():
     for mean, variance in result.values():
         assert np.isfinite(mean)
         assert variance >= 0
+
+
+def test_calibrate_rejects_a_firm_radius_bound_beyond_the_geometric_identification_limit():
+    """With belief_multiplier=1, search tickets and firms are both drawn within a disk of
+    radius cbd_radius, so no ticket-firm pair can ever exceed 2*cbd_radius apart -- a
+    firm_radius upper bound past that diameter makes every firm reachable regardless of its
+    exact value, and the calibration loss goes flat. See DECISIONS.md, "The search-position
+    draw oversampled the CBD centre, and it explains the flat firm_radius calibration region."
+    """
+    too_wide = dict(DEFAULT_BOUNDS, firm_radius=(1.0, 2 * SMALL.cbd_radius + 0.5))
+    empirical = EmpiricalMoments(
+        values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
+    )
+    with pytest.raises(ValueError, match="geometric"):
+        calibrate(SMALL, bounds=too_wide, n_lhs_points=2, empirical=empirical)
+
+
+def test_calibrate_accepts_a_firm_radius_bound_at_exactly_the_geometric_limit():
+    at_limit = dict(DEFAULT_BOUNDS, firm_radius=(1.0, 2 * SMALL.cbd_radius))
+    empirical = EmpiricalMoments(
+        values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
+    )
+    calibrate(SMALL, bounds=at_limit, n_lhs_points=2, empirical=empirical)  # must not raise
+
+
+def test_calibrate_skips_the_geometric_check_when_belief_multiplier_is_not_one():
+    """The geometric argument assumes the unbiased D2 disk (belief_multiplier=1); a biased
+    search radius scales the ticket-side disk too, so the bound doesn't apply the same way and
+    the check must not fire."""
+    biased = replace(SMALL, belief_multiplier=1.5)
+    too_wide = dict(DEFAULT_BOUNDS, firm_radius=(1.0, 2 * SMALL.cbd_radius + 0.5))
+    empirical = EmpiricalMoments(
+        values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
+    )
+    calibrate(biased, bounds=too_wide, n_lhs_points=2, empirical=empirical)  # must not raise
+
+
+def test_calibration_result_flags_a_parameter_landing_within_one_percent_of_its_bound():
+    """A numerical estimate at or within 1% of a bound is boundary-adjacent and weakly
+    identified, not a genuine interior optimum -- see Task 8's no-false-success gate."""
+    empirical = EmpiricalMoments(
+        values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
+    )
+    # A tiny box pinned right at firm_kappa's upper edge forces Nelder-Mead to land there.
+    pinned_bounds = dict(DEFAULT_BOUNDS, firm_kappa=(1.99, 2.0))
+    result = calibrate(SMALL, bounds=pinned_bounds, n_lhs_points=2, empirical=empirical)
+    assert "firm_kappa" in result.boundary_adjacent_params
 
 
 @pytest.mark.slow
