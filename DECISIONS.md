@@ -1656,3 +1656,51 @@ mechanism entirely (a reservation-wage margin, match quality heterogeneity, or s
 neither of which this remediation adds without that conversation happening first, per the plan's
 explicit instruction. Week 5 policy work does not proceed on this calibration as though it were
 usable, per the plan's completion definition.
+
+## The real SQ1 number, and the public repository brought in line with what actually exists
+
+**SQ1, run for real against the corrected configs, is a trustworthy number for the first time.**
+Twenty paired seeds, `configs/baseline.yaml` against `configs/frictionless.yaml` (a genuine
+one-field counterfactual since Task 1, on the corrected separation rate since Task 4, under the
+corrected spatial sampling since Task 5): `baseline` rejects constant returns on 3 of 20 seeds
+(binomial p=0.0755, not significant against the test's own 5 per cent size), `frictionless` on
+1 of 20 (p=0.6415) -- neither arm fails the headline gate. `delta_a = -0.0104`, 95 per cent CI
+`[-0.0307, 0.0126]`, over the 16 seeds where CRS survives in both arms: statistically
+indistinguishable from zero, the same qualitative reading as the invalidated `-0.0025` figure,
+but now measured on a config pair that actually differs in one field, a separation rate that's
+been re-linked, and a spatial draw that's been fixed -- not a lucky coincidence, a genuine
+answer that happens to still say "no detectable effect at this population." Written to
+`results/published/sq1_seed_results.csv` and `sq1_summary.json`, reproducible with the exact
+command in the README.
+
+**The microdata-detection hook's own documentation outran what its code actually checked.** It
+claimed to catch "a QLFS extract renamed to results.csv" by content, but the magic-byte list
+only covered the *newer* Stata format's human-readable `<stata_dta>` header -- the real
+QLFS/NHTS files on disk are format 113 (Stata 8/9), which has no readable signature at all, just
+a 4-byte binary header. Added a real, tested detector for it (release-number byte, byteorder
+byte, filetype byte, unused byte, requiring all four together to keep the false-positive rate
+on arbitrary binary files negligible), confirmed against the actual QLFS/NHTS files on this
+machine renamed to `.csv`, not a synthetic byte pattern invented for the test.
+**Plain CSV re-exports of microdata still have no reliable content signature** -- said plainly
+in the hook's own docstring now, rather than implied away by a claim that overreached. The
+hook's error message also previously said the DataFirst licence itself "forbids redistributing
+raw microdata" -- DataFirst's QLFS/PALMS/NIDS-W5/NHTS catalogue entries are CC-BY, a permissive
+licence; the actual restriction is this project's own policy (never commit individual-level
+records, regardless of licence tier), not a claim about what CC-BY forbids. Corrected in both
+the hook's docstring and its printed message.
+
+**`.pre-commit-config.yaml`'s tool revisions had drifted from `pyproject.toml`'s pins** (Ruff
+v0.12.7 vs. the pinned 0.16.2, nbstripout 0.8.1 vs. the pinned 0.9.1) since the Week 1 scaffold
+-- updated to match, confirmed by actually running `pre-commit run --all-files` against the new
+revisions rather than just editing the version strings and hoping they resolve.
+
+**`README.md` and `CHANGELOG.md` described a project stuck at its Week 1 scaffold** ("Under
+active development... this section gets filled in as each build phase lands") despite Weeks 2
+through 4 being implemented and this entire remediation having landed on top of them. Both now
+state the real, current, unrounded status: which weeks are implemented, that the calibration
+does not clear its own gate and why, the one number (SQ1) that is trustworthy right now with the
+exact command that reproduces it, and what's still not done -- including the open mechanism
+question this file's own diagnosis surfaced. No new version tag is cut: `v0.2` remains the most
+recent milestone that has actually passed its own gate, and creating a `v0.3` or `v0.4` for a
+calibration that just failed its own no-false-success gate would misrepresent what's actually
+true, exactly the failure mode this whole remediation exists to fix.
