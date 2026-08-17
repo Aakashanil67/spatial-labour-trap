@@ -29,3 +29,6 @@ notebooks/moments/*.html
 Thumbs.db
 .vscode/
 .idea/
+
+# Local git worktrees used for isolated remediation work
+.worktrees/
