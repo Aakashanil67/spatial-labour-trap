@@ -1252,3 +1252,61 @@ as printed, not edited, since they are a record of what the code actually produc
 corrects. Task 8 of the verification remediation plan reruns the full calibration campaign
 against the corrected target; whatever it reports there supersedes the specific numbers above
 regardless of this sign correction.
+
+## transport_budget_share and its NHTS target were measuring two different things
+
+The same 17 August audit found that `transport_budget_share()`'s simulated moment and its NHTS-
+derived empirical target were never the same estimand, even though both had been landing near
+0.08-0.11 and looking like a fit. The empirical side (notebook 02) is conditional and daily on
+both sides: mean transport cost among the 4,655 NHTS respondents who actually reported travelling
+while job-hunting on a given day, divided by a daily wage equivalent (median monthly wage /
+21.7). The old `transport_budget_share()` was monthly and unconditional: total transport spend
+in a period divided by the *entire currently-unemployed stock* `u`, including every agent who
+made zero trips that period, then compared to the full monthly wage. Comparing a conditional
+daily ratio to an unconditional monthly one and getting similar numbers back was coincidence, not
+agreement -- the two formulas measure different objects at different time scales and there is no
+reason their point estimates should land near each other except by chance.
+
+**The fix makes both sides the same estimand.** `transport_budget_share()` now sums transport
+spend and effective search trips separately across the window, divides total spend by
+(total trips times the daily wage), and returns `nan` rather than a false zero when the window
+contains no trips at all -- see `src/moments.py` and the hand-calculated fixtures in
+`tests/test_moments.py` (one trip, several trips in one period, an all-zero window, and a mixed
+window with some zero-trip periods interleaved, confirming the ratio depends only on total spend
+and total trips, not on how activity is distributed across periods). This is a genuine
+conditional, daily, per-trip cost share, the same object the empirical side computes -- not the
+previous per-searcher monthly average.
+
+**`search_cost_per_trip` already meant the right thing, so the four-parameter calibration
+survives unchanged.** The plan flagged a possible stop-and-decide point here: if
+`search_cost_per_trip` were actually non-transport expenditure, NHTS's transport-only cost
+couldn't identify it and the four-parameter/four-moment mapping would need rethinking.
+Checked directly in `src/agents.py`: `cost_per_trip = search_cost_per_trip +
+transport_cost_rate * distance_to_cbd` -- `search_cost_per_trip` is already the fixed
+(distance-independent) component of a trip's transport cost, and `transport_cost_rate *
+distance` is its distance-varying component. Total trip cost is therefore the correct model
+analogue of NHTS's reported travel cost already; no redefinition of what the parameter means was
+needed, and locked commitment 3's four-parameter, four-moment mapping stands.
+
+**The size of the correction is the actual finding.** Run at `configs/baseline.yaml`'s current
+(pre-Task-8) parameters across all 15 `CALIBRATION_SEEDS`: the old formula averaged 0.0754 across
+seeds, close enough to the 0.1058 empirical target that the calibration campaign treated this
+moment as reasonably well fit. The new, correctly-conditioned formula averages 1.5171 across the
+same seeds and parameters -- roughly fourteen times the empirical target, not a small correction.
+A large jump is expected and is itself evidence the old apparent fit was spurious: the model's
+`WAGE=1.0` numeraire divided by `DAYS_PER_MONTH=21.7` gives a small daily wage (0.0461), so a
+per-trip cost even a few cents above `search_cost_per_trip`'s calibrated range easily exceeds a
+full day's wage once expressed as a share of it. Task 8 reruns the full calibration campaign
+against this corrected formula; every other reported moment value for `transport_budget_share`
+from before this commit, including the 0.1103/0.1058 "0.5pp off" reading in "The re-run
+campaign," compared the old formula to the same target it was never actually measuring the same
+thing as, and is superseded by whatever Task 8 reports under the corrected definition.
+
+The wage-benchmark side of notebook 02 also carried an imprecise claim -- that converting the
+monthly wage to a daily rate "assumes job-search travel costs recur at roughly a daily rate,"
+which reads as a frequency assumption. It isn't one: the numerator is already conditional on a
+travel day having happened (`Q47Travlooking == "Yes"`), and dividing the wage by 21.7 is a unit
+conversion, not a claim about how many days a month job search actually happens. Reworded in the
+notebook; the computed values (R20.96 mean daily cost, R4,300 monthly wage, 0.1058 point
+estimate, 0.0055 bootstrap SE) are unchanged, since nothing about the empirical computation
+itself was wrong -- only the model-side formula and this piece of the empirical-side prose were.

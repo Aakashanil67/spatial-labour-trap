@@ -14,6 +14,13 @@ import pandas as pd
 from src.agents import WAGE, SeekerState
 from src.model import CityModel
 
+# South Africa's conventional working-days-per-month figure, used only to convert the monthly
+# WAGE numeraire to a daily rate -- the same convention notebook 02 uses to convert NHTS's
+# monthly wage figure to a daily one, so both sides of transport_budget_share are on the same
+# (daily, per-trip) footing. See DECISIONS.md, "transport_budget_share and its NHTS target were
+# measuring two different things".
+DAYS_PER_MONTH = 21.7
+
 
 def compute_moments(model: CityModel, history: pd.DataFrame) -> dict[str, float]:
     cfg = model.config
@@ -52,20 +59,24 @@ def discouraged_share_narrow(window: pd.DataFrame, n_agents: int) -> float:
 
 
 def transport_budget_share(window: pd.DataFrame) -> float:
-    """Average per-period transport spend among searching agents, as a share of the wage
-    numeraire -- the model's analogue of "share of budget spent on transport", scoped to what
-    c actually represents: a search cost paid by the unemployed, not a consumption share or a
-    cost borne by people who already have the job. See the definitional-trap note in
-    DECISIONS.md before comparing this directly to any single published NHTS figure -- at
-    least three non-interchangeable variants exist and none of them is quite this object
-    either; this is the model's own internally consistent definition."""
-    searchers_present = window["u"] > 0
-    if not searchers_present.any():
-        return 0.0
-    spend_per_searcher = (
-        window.loc[searchers_present, "transport_spend"] / window.loc[searchers_present, "u"]
-    )
-    return float((spend_per_searcher / WAGE).mean())
+    """Cost of one effective search-trip excursion, as a share of one day's wage: total
+    transport spend across the window divided by (total effective search trips in the window
+    times the daily wage). Each model trip is treated as one search-day excursion, matching how
+    the NHTS-derived empirical target conditions on a reported travel day -- both sides of the
+    comparison are now conditional on a search trip actually happening and expressed in the
+    same (daily) time unit, which the previous monthly-total-per-searcher formula was not. See
+    DECISIONS.md, "transport_budget_share and its NHTS target were measuring two different
+    things", for why this replaced the earlier definition.
+
+    Undefined (nan), not a false zero, when nobody in the window ever took a search trip: the
+    estimand is a cost conditional on a search trip happening, and there is no trip to
+    condition on."""
+    total_trips = window["total_trips"].sum()
+    if total_trips == 0:
+        return float("nan")
+    total_spend = window["transport_spend"].sum()
+    daily_wage = WAGE / DAYS_PER_MONTH
+    return float(total_spend / (total_trips * daily_wage))
 
 
 def long_term_share(window: pd.DataFrame) -> float:
