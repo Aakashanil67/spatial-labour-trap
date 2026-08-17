@@ -76,6 +76,9 @@ def load_empirical_moments(path: str = "data/moments.csv") -> EmpiricalMoments:
     if missing:
         raise ValueError(f"{path} is missing required moment(s): {sorted(missing)}")
     df = df[df["key"].isin(MOMENT_KEYS)]
+    duplicated = sorted(df.loc[df["key"].duplicated(), "key"].unique().tolist())
+    if duplicated:
+        raise ValueError(f"{path} has duplicate rows for moment(s): {duplicated}")
     if df["provisional"].any():
         still_provisional = df.loc[df["provisional"], "key"].tolist()
         raise ValueError(
@@ -84,6 +87,11 @@ def load_empirical_moments(path: str = "data/moments.csv") -> EmpiricalMoments:
         )
     if df["value"].isna().any() or df["standard_error"].isna().any():
         raise ValueError(f"{path} has a null value or standard_error for a required moment.")
+    if not np.isfinite(df["value"]).all() or not np.isfinite(df["standard_error"]).all():
+        raise ValueError(f"{path} has a non-finite value or standard_error.")
+    if (df["standard_error"] <= 0).any():
+        non_positive = df.loc[df["standard_error"] <= 0, "key"].tolist()
+        raise ValueError(f"{path} has a non-positive standard_error for {non_positive}.")
     values = dict(zip(df["key"], df["value"], strict=True))
     ses = dict(zip(df["key"], df["standard_error"], strict=True))
     return EmpiricalMoments(values=values, standard_errors=ses)

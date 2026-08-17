@@ -1206,3 +1206,49 @@ in a later stage of this remediation (Task 7 of the verification plan), with pai
 CRS gate that refuses to report a constrained `delta_a` when either arm's returns-to-scale
 assumption fails; this section exists so the superseded number stops circulating as if it still
 meant something.
+
+## An independent verification found distance_gradient_slope's sign and dating both wrong
+
+The same 17 August audit found a second, separate error in `distance_gradient_slope`: notebook
+04 recorded the magnitude of Baez and Kshirsagar's three city coefficients but dropped the
+sign, storing `+5.0333` in `data/moments.csv` when Table 5b's own coefficients are all
+negative -- a higher travel-time-rank percentile (further from the business district) *lowers*
+employment share, it doesn't raise it. Confirmed directly against the source PDF rather than
+trusting the earlier transcription (`pypdf` text extraction, page 39 of 50): the table's row
+reads "Travel Time -0.49\*\*\* -0.46\*\*\* -0.37\*\*\* -0.21\*\*\* -0.65\*\*\* -0.65\*\*\*" under
+"Table 5b: Spatial Correlates of Share of the Adult Population Employed." The row's `period`
+was also wrong -- "2026," the paper's publication year, when the underlying regression links
+2011 census sub-place geography (the latest South African census available at that level) to
+spatial tax employment data. Both are fixed: `data/moments.csv` now records `-5.0333` dated
+`2011`, and `tests/test_empirical_moments.py` asserts the sign, the period and the presence of
+a `Table 5b` citation so this specific transcription error can't recur silently.
+
+**This changes the diagnosis, not just the number.** Every place in this file that described a
+simulated `distance_gradient_slope` as having "the wrong sign" was comparing against the
+wrong-signed target -- the model's own output was negative throughout, which means it had the
+*right* sign against the *correct* target all along, just short of the target's magnitude. Three
+specific claims above are superseded by this correction:
+
+- "Week 3, notebook 04 -- distance_gradient_slope, and the fourth moment is real" records the
+  value as `5.03` with no sign discussion -- correct as a description of what the notebook
+  computed at the time, now superseded by the corrected `-5.0333`.
+- "The full campaign confirms the smoke test..." describes `firm_radius` pinned at its lower
+  bound with a simulated value "com[ing] back with the wrong sign (-0.10)," and the printed
+  block immediately below it records `empirical=5.0333`. Both the prose and the console
+  output reflect the pre-correction target; against the corrected `-5.0333`, `-0.10` has the
+  *same* sign as the target, just a small fraction of its magnitude -- the boundary/noisy-
+  regression diagnosis in that section is unaffected by this correction and still stands.
+- "The re-run campaign: real progress..." describes `distance_gradient_slope` as "still unfit
+  (-1.52 against an empirical 5.03), still the wrong sign." Against the corrected target,
+  `-1.52` is the right sign at roughly 30 per cent of the target's magnitude -- unfit, but not
+  for the reason stated. The section's separate finding (this moment's loss weight is three to
+  four orders of magnitude below the other three, so the optimiser has little reason to move
+  `firm_radius` for this moment's sake) is the real explanation and is unaffected by this
+  correction.
+
+The console blocks recording literal program output (`empirical=5.0333` and similar) are left
+as printed, not edited, since they are a record of what the code actually produced at the time
+-- the surrounding prose is what carried the wrong interpretation, and that's what this section
+corrects. Task 8 of the verification remediation plan reruns the full calibration campaign
+against the corrected target; whatever it reports there supersedes the specific numbers above
+regardless of this sign correction.
