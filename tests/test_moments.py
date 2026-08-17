@@ -7,11 +7,18 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pandas as pd
 import pytest
 
+from src.agents import WAGE
 from src.config import Config
 from src.model import CityModel
-from src.moments import compute_moments, discouraged_share_narrow
+from src.moments import (
+    DAYS_PER_MONTH,
+    compute_moments,
+    discouraged_share_narrow,
+    transport_budget_share,
+)
 
 MVM = Config(
     n_agents=200,
@@ -82,6 +89,12 @@ def test_all_four_moments_are_present_and_finite_or_nan_only_for_distance():
     for key, value in moments.items():
         if key == "distance_gradient_slope":
             continue
+        if key == "transport_budget_share":
+            # A cost-of-one-search-trip / daily-wage ratio, not a share of a fixed pool --
+            # it can legitimately exceed 1 when a single trip costs more than a day's wage,
+            # unlike the other two moments, which are genuine population shares.
+            assert value != value or value >= 0.0, f"{key} is negative and not nan: {value}"
+            continue
         assert 0.0 <= value <= 1.0 or value == 0.0, f"{key} out of a sane [0, 1] range: {value}"
 
 
@@ -123,3 +136,52 @@ def test_moments_are_deterministic_under_a_fixed_seed():
     b = CityModel(SPATIAL)
     hb = b.run()
     assert compute_moments(a, ha) == compute_moments(b, hb)
+
+
+# transport_budget_share, hand-calculated -- see DECISIONS.md, "transport_budget_share and its
+# NHTS target were measuring two different things". Every fixture below uses a per-trip cost of
+# exactly R0.05 (in wage-numeraire units) so the expected ratio is the same constant,
+# 0.05 * DAYS_PER_MONTH, regardless of how spend is distributed across periods -- the point of
+# the fix is that the ratio depends only on total spend and total trips, not on how many
+# zero-trip periods sit in between.
+_PER_TRIP_COST = 0.05
+_EXPECTED_RATIO = _PER_TRIP_COST * DAYS_PER_MONTH
+
+
+def test_transport_budget_share_one_trip_one_period():
+    window = pd.DataFrame({"total_trips": [1], "transport_spend": [_PER_TRIP_COST]})
+    assert transport_budget_share(window) == pytest.approx(_EXPECTED_RATIO)
+
+
+def test_transport_budget_share_several_trips_one_period():
+    window = pd.DataFrame({"total_trips": [10], "transport_spend": [10 * _PER_TRIP_COST]})
+    assert transport_budget_share(window) == pytest.approx(_EXPECTED_RATIO)
+
+
+def test_transport_budget_share_is_nan_when_no_trips_ever_happen():
+    """A window where nobody ever took a search trip has no search-day cost to condition on --
+    the moment must say so (nan), not silently report a false 0.0 that would look like a real,
+    very-cheap-search-cost fit."""
+    window = pd.DataFrame({"total_trips": [0, 0, 0], "transport_spend": [0.0, 0.0, 0.0]})
+    share = transport_budget_share(window)
+    assert share != share  # nan
+
+
+def test_transport_budget_share_mixed_periods_ignores_zero_trip_periods():
+    """Zero-trip periods contribute no trips and no spend to the totals, so mixing them in with
+    active periods must not move the ratio -- the moment is conditional on a trip happening, not
+    averaged over calendar periods regardless of activity."""
+    window = pd.DataFrame(
+        {
+            "total_trips": [0, 5, 0, 3, 0],
+            "transport_spend": [0.0, 5 * _PER_TRIP_COST, 0.0, 3 * _PER_TRIP_COST, 0.0],
+        }
+    )
+    assert transport_budget_share(window) == pytest.approx(_EXPECTED_RATIO)
+
+
+def test_transport_budget_share_uses_the_daily_wage_not_the_monthly_wage():
+    """A sanity check on the unit conversion itself: one trip costing exactly one full monthly
+    WAGE must come back as DAYS_PER_MONTH, since a monthly cost is DAYS_PER_MONTH daily wages."""
+    window = pd.DataFrame({"total_trips": [1], "transport_spend": [WAGE]})
+    assert transport_budget_share(window) == pytest.approx(DAYS_PER_MONTH)

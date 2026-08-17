@@ -7,6 +7,15 @@
 # SQ1 asks what removing spatial friction does to matching efficiency at a fixed population,
 # not what a different population does.
 #
+# Corrected 2026-08-17: this file carried Miyamoto's Japanese fallback separation_rate=0.0048
+# while baseline.yaml had already moved to the QLFS-derived SA rate, so the two arms differed
+# in two channels at once and every delta_a computed against them, including the -0.0025
+# figure in DECISIONS.md, compared the wrong pair of economies. Synchronised to baseline's
+# current separation_rate; tests/test_configs.py enforces that the two files never diverge on
+# anything but transport_cost_rate again. Updated again the same day when Task 4 of the
+# verification remediation plan moved both rates together to the re-estimated central value
+# (0.0296, unrounded 0.0295827815) -- see DECISIONS.md.
+#
 # python -m src.run --config configs/frictionless.yaml
 
 n_agents: 500
@@ -14,7 +23,7 @@ n_vacancies: 15
 initial_search_capital: 0.6
 initial_capital_spread: 0.5
 search_cost_per_trip: 0.02
-separation_rate: 0.0048
+separation_rate: 0.0296 # synchronised to baseline.yaml, 2026-08-17 -- see header and DECISIONS.md
 belief_multiplier: 1.0
 household_inflow: 0.008
 reentry_threshold: 0.035

@@ -1,13 +1,13 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.7
+    rev: v0.16.2 # matches pyproject.toml's pinned ruff==0.16.2
     hooks:
       - id: ruff
         args: [--fix]
       - id: ruff-format
 
   - repo: https://github.com/kynan/nbstripout
-    rev: 0.8.1
+    rev: 0.9.1 # matches pyproject.toml's pinned nbstripout==0.9.1
     hooks:
       - id: nbstripout
 

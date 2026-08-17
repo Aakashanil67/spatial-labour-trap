@@ -1,0 +1,20 @@
+{
+  "n_paired_seeds": 20,
+  "alpha": 0.05,
+  "baseline_crs_rejections": 3,
+  "frictionless_crs_rejections": 1,
+  "baseline_binomial_pvalue": 0.07548367378849626,
+  "frictionless_binomial_pvalue": 0.6415140775914578,
+  "n_valid_paired_crs_comparisons": 16,
+  "constrained_headline_reportable": true,
+  "paired_delta_a_constrained_mean": -0.010423009344764811,
+  "paired_delta_a_constrained_ci_95": [
+    -0.030737177226986837,
+    0.01260166513491702
+  ],
+  "paired_delta_a_unconstrained_mean": -0.016763849978625307,
+  "paired_delta_a_unconstrained_ci_95": [
+    -0.23267967123749161,
+    0.18270083982595728
+  ]
+}

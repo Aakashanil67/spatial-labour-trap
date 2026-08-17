@@ -69,6 +69,56 @@ def test_no_spatial_config_means_every_agent_is_at_the_cbd():
     assert all(a.distance_band == 0 for a in seekers)
 
 
+def test_search_positions_are_uniform_over_the_cbd_disk_area_not_the_radius():
+    """search_positions() must draw uniformly over the CBD disk's AREA, matching the firm-
+    placement draw in model.py (cfg.cbd_radius * sqrt(U)) -- not uniformly over the radius
+    (cfg.cbd_radius * U), which packs samples near the centre and has a mean radius of R/2
+    instead of the correct 2R/3 for a uniform disk. See DECISIONS.md, "The search-position draw
+    oversampled the CBD centre, and it explains the flat firm_radius calibration region."
+
+    Uses a config with belief_multiplier=1 (the unbiased case, D2) so the draw radius is exactly
+    cfg.cbd_radius with no targeting-bias scaling -- fixed seed, 10,000 draws, tolerance chosen
+    from the fixed-seed sampling distribution (a uniform-disk mean of R * 2/3 has standard error
+    R / (6 * sqrt(3 * n)) =~ R * 0.0016 at n=10,000; 20x that is a generous, still-decisive
+    tolerance against the R/2 alternative this test exists to catch)."""
+    cfg = replace(MVM, n_agents=1, cbd_radius=5.0, belief_multiplier=1.0)
+    model = CityModel(cfg)
+    seeker = next(iter(model._seekers()))
+    seeker.trips_this_step = 10_000
+
+    positions = seeker.search_positions()
+    radii = [((x - model.cbd_x) ** 2 + (y - model.cbd_y) ** 2) ** 0.5 for x, y in positions]
+
+    assert len(radii) == 10_000
+    assert max(radii) <= cfg.cbd_radius + 1e-9
+
+    expected_mean_radius = cfg.cbd_radius * 2 / 3
+    tolerance = cfg.cbd_radius * 0.032  # ~20x the fixed-seed sampling SE, see docstring
+    assert (
+        expected_mean_radius - tolerance
+        <= sum(radii) / len(radii)
+        <= expected_mean_radius + tolerance
+    )
+
+
+def test_firm_radius_beyond_the_geometric_maximum_is_a_flat_region():
+    """Documents why radii past 2*cbd_radius are excluded from the calibration search box
+    (calibrate.py's _validate_firm_radius_bound), rather than legitimising them as a search
+    domain: once firm_radius reaches the maximum possible ticket-firm distance within the CBD
+    disk, every firm is reachable from every ticket regardless of firm_radius's exact value, so
+    two different values in that region must produce byte-identical histories under the same
+    seed. SPATIAL's cbd_radius=2.0 puts the geometric maximum at 4.0; 4.1 and 6.0 are both
+    comfortably past it. See DECISIONS.md, "The search-position draw oversampled the CBD
+    centre, and it explains the flat firm_radius calibration region" (quote marks omitted
+    at the very end to keep the docstring delimiter unambiguous).
+    """
+    a = CityModel(replace(SPATIAL, firm_radius=4.1)).run()
+    b = CityModel(replace(SPATIAL, firm_radius=6.0)).run()
+    assert a["u"].tolist() == b["u"].tolist()
+    assert a["v"].tolist() == b["v"].tolist()
+    assert a["m"].tolist() == b["m"].tolist()
+
+
 def test_homes_fall_within_the_configured_township_range():
     model = CityModel(SPATIAL)
     seekers = list(model._seekers())

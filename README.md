@@ -41,9 +41,37 @@ a common fiscal budget, reported as employment gained per rand.
 
 ## Status
 
-Under active development. This README, the results and the figures below get filled in as each
-build phase lands -- see `DECISIONS.md` for the engineering record and
-`.claude/session-log.md` (local only) for the session-by-session history.
+Weeks 1-4 of the build plan are implemented: the spatial model (endogenous firms, AR(1) shock,
+wealth heterogeneity), all four calibration moments computed from real DataFirst microdata, the
+matching-function fit with a constant-returns test before any efficiency number is trusted, and
+the MSM calibration engine. An independent verification on 17 August 2026 found six real
+problems spanning the model, the methodology and the public repository itself; every one is
+fixed and test-covered as of this commit -- see `DECISIONS.md` for the full record, task by
+task.
+
+**The calibration itself does not clear its own no-false-success gate.** The corrected campaign
+converged cleanly on all three restarts, but two of the four free parameters landed within 1%
+of their search-box floor, and `long_term_share` (the share of currently-unemployed agents
+searching 12+ months) simulates at exactly `0.0000` against an empirical `0.7744`, across the
+entire tested response surface (`firm_radius`, the separation rate, and the household-inflow
+parameter). Diagnosed, not hidden: whenever an agent resumes active search in this model, the
+match rate relative to the small active-searching pool is high enough that no spell reaches 12
+months, regardless of vacancy scarcity or separation/discouragement timing. That's a real
+mechanism question for the supervisor conversation, not a bug -- see `DECISIONS.md`, "The
+corrected campaign, run once, fails the no-false-success gate...", for the full diagnosis and
+`results/published/` for the unrounded numbers.
+
+**One number that is trustworthy right now**: SQ1 (does removing spatial friction change the
+matching function's fitted efficiency `a`?), paired across 20 common seeds under a genuine
+single-field counterfactual (`configs/baseline.yaml` vs. `configs/frictionless.yaml`, differing
+only in `transport_cost_rate`), gated by a real constant-returns hypothesis test rather than
+reported regardless: `delta_a = -0.0104`, 95% CI `[-0.031, 0.013]` -- statistically
+indistinguishable from zero at this population. Reproduce it directly:
+
+```bash
+python -m src.sq1 --baseline configs/baseline.yaml --frictionless configs/frictionless.yaml \
+    --seeds 1:20 --out-dir results/published
+```
 
 ## Design decisions and trade-offs
 
@@ -66,9 +94,25 @@ pre-commit install --hook-type pre-commit --hook-type commit-msg
 
 python -m src.run --config configs/mvm.yaml
 pytest -m "not slow"          # full suite: pytest (no marker filter)
+
+python -m src.calibrate --config configs/baseline.yaml --out-dir results/published
+python -m src.sq1 --baseline configs/baseline.yaml --frictionless configs/frictionless.yaml \
+    --seeds 1:20 --out-dir results/published
 ```
+
+Notebooks under `notebooks/moments/` need `THESIS_DATA_ROOT` set to your own extracted DataFirst
+download folder first -- see [`data/README.md`](data/README.md).
 
 ## What's not done
 
-Everything past the minimum viable model. This section gets more specific, not less, as the
-build progresses -- an honest what's-broken list is worth more here than a features list.
+- **A usable calibration.** See "Status" above -- `long_term_share` is structurally unreachable
+  in the current four-parameter mapping across every tested region of the response surface; this
+  needs a decision (Aakash and the supervisor) about whether a fifth mechanism is warranted
+  before Week 5 policy work can proceed on a calibrated model, per the verification remediation
+  plan's own completion definition.
+- Week 5 (Banerjee-Sequeira validation, beliefs-vs-scarcity decomposition), Week 7 (policy
+  experiments, condition mapping) and Week 8 (robustness, freeze) haven't started.
+- `distance_gradient_slope`'s empirical uncertainty is a three-city cross-sectional spread, not
+  a formal sampling standard error, and its fitted weight in the calibration is three to four
+  orders of magnitude below the other three moments -- likely under-identified by the current
+  moment set, not yet resolved (see `DECISIONS.md`).

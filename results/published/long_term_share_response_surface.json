@@ -1,0 +1,92 @@
+{
+  "firm_radius=1.0": {
+    "distance_gradient_slope": -1.7544,
+    "discouraged_share": 0.2419,
+    "transport_budget_share": 1.1262,
+    "long_term_share": 0.0
+  },
+  "firm_radius=1.5": {
+    "distance_gradient_slope": -2.1803,
+    "discouraged_share": 0.1815,
+    "transport_budget_share": 1.1216,
+    "long_term_share": 0.0
+  },
+  "firm_radius=2.0": {
+    "distance_gradient_slope": -1.2817,
+    "discouraged_share": 0.1687,
+    "transport_budget_share": 1.123,
+    "long_term_share": 0.0
+  },
+  "firm_radius=2.5": {
+    "distance_gradient_slope": -1.4891,
+    "discouraged_share": 0.1536,
+    "transport_budget_share": 1.1197,
+    "long_term_share": 0.0
+  },
+  "firm_radius=3.0": {
+    "distance_gradient_slope": -1.4886,
+    "discouraged_share": 0.1515,
+    "transport_budget_share": 1.1245,
+    "long_term_share": 0.0
+  },
+  "firm_radius=3.5": {
+    "distance_gradient_slope": -1.8157,
+    "discouraged_share": 0.1515,
+    "transport_budget_share": 1.1171,
+    "long_term_share": 0.0
+  },
+  "firm_radius=4.0": {
+    "distance_gradient_slope": -1.1091,
+    "discouraged_share": 0.1494,
+    "transport_budget_share": 1.12,
+    "long_term_share": 0.0
+  },
+  "separation_rate=0.015": {
+    "distance_gradient_slope": -0.9249,
+    "discouraged_share": 0.0996,
+    "transport_budget_share": 1.1312,
+    "long_term_share": 0.0
+  },
+  "separation_rate=0.0296": {
+    "distance_gradient_slope": -2.2056,
+    "discouraged_share": 0.2464,
+    "transport_budget_share": 1.1202,
+    "long_term_share": 0.0
+  },
+  "separation_rate=0.045": {
+    "distance_gradient_slope": -2.5329,
+    "discouraged_share": 0.4919,
+    "transport_budget_share": 1.1155,
+    "long_term_share": 0.0
+  },
+  "separation_rate=0.06": {
+    "distance_gradient_slope": -2.4133,
+    "discouraged_share": 0.599,
+    "transport_budget_share": 1.1004,
+    "long_term_share": 0.0
+  },
+  "household_inflow=0.004": {
+    "distance_gradient_slope": -2.641,
+    "discouraged_share": 0.3597,
+    "transport_budget_share": 1.1081,
+    "long_term_share": 0.0
+  },
+  "household_inflow=0.008": {
+    "distance_gradient_slope": -2.2056,
+    "discouraged_share": 0.2464,
+    "transport_budget_share": 1.1202,
+    "long_term_share": 0.0
+  },
+  "household_inflow=0.016": {
+    "distance_gradient_slope": -1.8499,
+    "discouraged_share": 0.1526,
+    "transport_budget_share": 1.1392,
+    "long_term_share": 0.0
+  },
+  "household_inflow=0.032": {
+    "distance_gradient_slope": -0.954,
+    "discouraged_share": 0.0908,
+    "transport_budget_share": 1.1454,
+    "long_term_share": 0.0
+  }
+}

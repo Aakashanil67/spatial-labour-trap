@@ -1172,3 +1172,535 @@ long before 12 months regardless of how the discouragement side is tuned. The re
 between `firm_radius` large enough to help the other three moments and `firm_radius` small
 enough to let a search spell actually run long -- narrower and more specific than "a fifth
 parameter might be needed," and the next thing to test directly rather than guess at.
+
+## An independent verification on 17 August found the frictionless config drifted, and it invalidates delta_a=-0.0025
+
+An independent verification pass over this repository, run on 17 August 2026 before any Week 5
+work started, found that `frictionless.yaml` had drifted out from under its own stated purpose.
+Its header comment still read "identical in every field except `transport_cost_rate`," but its
+`separation_rate` had been left at Miyamoto's Japanese fallback (0.0048) through the session
+that moved `baseline.yaml` onto the QLFS-derived SA rate (0.0317, see "The real separation
+rate, adopted..." above). Nobody edited `frictionless.yaml` in that session because nothing told
+them to -- the two files are supposed to be identical apart from one field, so a change to one
+should have meant an identical change to the other, and didn't.
+
+That means every `delta_a = a(friction) - a(frictionless)` computed since then, including the
+`mean delta_a = -0.0025`, 95% interval `[-0.025, +0.009]` reported above, compared two economies
+that differed in **two** channels at once: transport cost, which SQ1 is actually about, and
+separation rate, which changes `expected_value_per_hire` and therefore the entire vacancy-posting
+regime (see "A third door into the same deadlock class..."). A near-zero, CI-straddles-zero
+result computed under a confound isn't evidence of anything -- it's exactly what a shared, silent
+bug looks like. **The `-0.0025` figure above is invalidated by configuration drift, not by a
+finding about matching efficiency, and is kept here as a labelled failed result rather than
+deleted.** `frictionless.yaml` is now resynchronised to `baseline.yaml`'s separation rate, and
+`tests/test_configs.py` asserts the two files can never diverge on anything but
+`transport_cost_rate` again -- this specific silent-drift failure mode gets a regression test,
+the same discipline applied to every other bug class in this project.
+
+The audit's independently measured constrained matching efficiencies at seed 42 make the size of
+the confound concrete: `0.963283` for `baseline.yaml`, `1.000000` for the committed (stale)
+`frictionless.yaml`, and `0.953347` for a frictionless config corrected to match baseline's
+separation rate -- and that corrected run rejects constant returns at the five per cent level,
+which the stale comparison's near-1.0 both-arms reading had been masking. SQ1 is rebuilt properly
+in a later stage of this remediation (Task 7 of the verification plan), with paired seeds and a
+CRS gate that refuses to report a constrained `delta_a` when either arm's returns-to-scale
+assumption fails; this section exists so the superseded number stops circulating as if it still
+meant something.
+
+## An independent verification found distance_gradient_slope's sign and dating both wrong
+
+The same 17 August audit found a second, separate error in `distance_gradient_slope`: notebook
+04 recorded the magnitude of Baez and Kshirsagar's three city coefficients but dropped the
+sign, storing `+5.0333` in `data/moments.csv` when Table 5b's own coefficients are all
+negative -- a higher travel-time-rank percentile (further from the business district) *lowers*
+employment share, it doesn't raise it. Confirmed directly against the source PDF rather than
+trusting the earlier transcription (`pypdf` text extraction, page 39 of 50): the table's row
+reads "Travel Time -0.49\*\*\* -0.46\*\*\* -0.37\*\*\* -0.21\*\*\* -0.65\*\*\* -0.65\*\*\*" under
+"Table 5b: Spatial Correlates of Share of the Adult Population Employed." The row's `period`
+was also wrong -- "2026," the paper's publication year, when the underlying regression links
+2011 census sub-place geography (the latest South African census available at that level) to
+spatial tax employment data. Both are fixed: `data/moments.csv` now records `-5.0333` dated
+`2011`, and `tests/test_empirical_moments.py` asserts the sign, the period and the presence of
+a `Table 5b` citation so this specific transcription error can't recur silently.
+
+**This changes the diagnosis, not just the number.** Every place in this file that described a
+simulated `distance_gradient_slope` as having "the wrong sign" was comparing against the
+wrong-signed target -- the model's own output was negative throughout, which means it had the
+*right* sign against the *correct* target all along, just short of the target's magnitude. Three
+specific claims above are superseded by this correction:
+
+- "Week 3, notebook 04 -- distance_gradient_slope, and the fourth moment is real" records the
+  value as `5.03` with no sign discussion -- correct as a description of what the notebook
+  computed at the time, now superseded by the corrected `-5.0333`.
+- "The full campaign confirms the smoke test..." describes `firm_radius` pinned at its lower
+  bound with a simulated value "com[ing] back with the wrong sign (-0.10)," and the printed
+  block immediately below it records `empirical=5.0333`. Both the prose and the console
+  output reflect the pre-correction target; against the corrected `-5.0333`, `-0.10` has the
+  *same* sign as the target, just a small fraction of its magnitude -- the boundary/noisy-
+  regression diagnosis in that section is unaffected by this correction and still stands.
+- "The re-run campaign: real progress..." describes `distance_gradient_slope` as "still unfit
+  (-1.52 against an empirical 5.03), still the wrong sign." Against the corrected target,
+  `-1.52` is the right sign at roughly 30 per cent of the target's magnitude -- unfit, but not
+  for the reason stated. The section's separate finding (this moment's loss weight is three to
+  four orders of magnitude below the other three, so the optimiser has little reason to move
+  `firm_radius` for this moment's sake) is the real explanation and is unaffected by this
+  correction.
+
+The console blocks recording literal program output (`empirical=5.0333` and similar) are left
+as printed, not edited, since they are a record of what the code actually produced at the time
+-- the surrounding prose is what carried the wrong interpretation, and that's what this section
+corrects. Task 8 of the verification remediation plan reruns the full calibration campaign
+against the corrected target; whatever it reports there supersedes the specific numbers above
+regardless of this sign correction.
+
+## transport_budget_share and its NHTS target were measuring two different things
+
+The same 17 August audit found that `transport_budget_share()`'s simulated moment and its NHTS-
+derived empirical target were never the same estimand, even though both had been landing near
+0.08-0.11 and looking like a fit. The empirical side (notebook 02) is conditional and daily on
+both sides: mean transport cost among the 4,655 NHTS respondents who actually reported travelling
+while job-hunting on a given day, divided by a daily wage equivalent (median monthly wage /
+21.7). The old `transport_budget_share()` was monthly and unconditional: total transport spend
+in a period divided by the *entire currently-unemployed stock* `u`, including every agent who
+made zero trips that period, then compared to the full monthly wage. Comparing a conditional
+daily ratio to an unconditional monthly one and getting similar numbers back was coincidence, not
+agreement -- the two formulas measure different objects at different time scales and there is no
+reason their point estimates should land near each other except by chance.
+
+**The fix makes both sides the same estimand.** `transport_budget_share()` now sums transport
+spend and effective search trips separately across the window, divides total spend by
+(total trips times the daily wage), and returns `nan` rather than a false zero when the window
+contains no trips at all -- see `src/moments.py` and the hand-calculated fixtures in
+`tests/test_moments.py` (one trip, several trips in one period, an all-zero window, and a mixed
+window with some zero-trip periods interleaved, confirming the ratio depends only on total spend
+and total trips, not on how activity is distributed across periods). This is a genuine
+conditional, daily, per-trip cost share, the same object the empirical side computes -- not the
+previous per-searcher monthly average.
+
+**`search_cost_per_trip` already meant the right thing, so the four-parameter calibration
+survives unchanged.** The plan flagged a possible stop-and-decide point here: if
+`search_cost_per_trip` were actually non-transport expenditure, NHTS's transport-only cost
+couldn't identify it and the four-parameter/four-moment mapping would need rethinking.
+Checked directly in `src/agents.py`: `cost_per_trip = search_cost_per_trip +
+transport_cost_rate * distance_to_cbd` -- `search_cost_per_trip` is already the fixed
+(distance-independent) component of a trip's transport cost, and `transport_cost_rate *
+distance` is its distance-varying component. Total trip cost is therefore the correct model
+analogue of NHTS's reported travel cost already; no redefinition of what the parameter means was
+needed, and locked commitment 3's four-parameter, four-moment mapping stands.
+
+**The size of the correction is the actual finding.** Run at `configs/baseline.yaml`'s current
+(pre-Task-8) parameters across all 15 `CALIBRATION_SEEDS`: the old formula averaged 0.0754 across
+seeds, close enough to the 0.1058 empirical target that the calibration campaign treated this
+moment as reasonably well fit. The new, correctly-conditioned formula averages 1.5171 across the
+same seeds and parameters -- roughly fourteen times the empirical target, not a small correction.
+A large jump is expected and is itself evidence the old apparent fit was spurious: the model's
+`WAGE=1.0` numeraire divided by `DAYS_PER_MONTH=21.7` gives a small daily wage (0.0461), so a
+per-trip cost even a few cents above `search_cost_per_trip`'s calibrated range easily exceeds a
+full day's wage once expressed as a share of it. Task 8 reruns the full calibration campaign
+against this corrected formula; every other reported moment value for `transport_budget_share`
+from before this commit, including the 0.1103/0.1058 "0.5pp off" reading in "The re-run
+campaign," compared the old formula to the same target it was never actually measuring the same
+thing as, and is superseded by whatever Task 8 reports under the corrected definition.
+
+The wage-benchmark side of notebook 02 also carried an imprecise claim -- that converting the
+monthly wage to a daily rate "assumes job-search travel costs recur at roughly a daily rate,"
+which reads as a frequency assumption. It isn't one: the numerator is already conditional on a
+travel day having happened (`Q47Travlooking == "Yes"`), and dividing the wage by 21.7 is a unit
+conversion, not a claim about how many days a month job search actually happens. Reworded in the
+notebook; the computed values (R20.96 mean daily cost, R4,300 monthly wage, 0.1058 point
+estimate, 0.0055 bootstrap SE) are unchanged, since nothing about the empirical computation
+itself was wrong -- only the model-side formula and this piece of the empirical-side prose were.
+
+## The QLFS separation-rate linkage needed a demographic consistency check, and the design variables needed auditing before trusting a plain bootstrap
+
+The 17 August audit's most consequential finding was in notebook 03, Part B. The raw
+`UQNO`+`PERSONNO` panel linkage that produced the 3.17 per cent monthly separation rate now
+adopted into `baseline.yaml` (see "The real separation rate, adopted...") contains implausible
+matches: a household code reassigned to a different person between quarters (a new household
+moving into a rotated-out dwelling, an enumerator data-entry slip, a genuine but rare within-
+household `PERSONNO` renumbering) reads as a spurious "employment transition" under the raw
+linkage, because the code has no way to tell a real transition from an identity error. Measured
+directly rather than assumed: over the full matched population in each quarter-pair (not just
+the employed subset), 314 gender mismatches and 735 implausible age changes (an age *decrease*,
+or an increase of two or more years across a roughly three-month gap) in 2025 Q2->Q3; 222 and
+521 in Q3->Q4; 214 and 516 in Q4->2026 Q1.
+
+**The fix requires stable recorded gender and a plausible age change (zero or one year) across
+each matched pair**, both fields every one of the four quarterly extracts carries. Restricted to
+the employed-in-t0 population the separation rate is actually computed over: 94/212 (gender/age)
+rejections out of 10,745 in Q2->Q3, 69/187 out of 10,822 in Q3->Q4, 66/177 out of 10,671 in
+Q4->2026 Q1 -- attrition of 1.8 to 2.1 per cent per pair. `Q15POPULATION` (population group) is
+also available and consistently coded across all four quarters, so it was checked for stability
+the same way: 37, 17 and 33 additional mismatches per pair, under 0.3 per cent of the employed
+subsample. Adding it as a third filter moves the pooled quarterly rate from 0.0861488108 to
+0.0861345569 -- a change in the fifth decimal place, both rounding to the same 0.0296 monthly --
+so it's reported for completeness but not applied: the frozen estimate below uses gender and age
+only, the two checks that actually explain the correction's size.
+
+**Pooled across all three pairs, the demographically-consistent quarterly rate is 0.0861488108**
+(was 0.0921049673 under the raw linkage), rebasing to a **monthly rate of 0.0295827815** (was
+0.0316956564) via the same compounding convention `rho_A` already uses. This is the central
+estimate now written into `configs/baseline.yaml`, `frictionless.yaml`, `trace_demo.yaml` and
+both `scarce_vacancies*.yaml` files as `0.0296`; the raw-link value (`0.0317`, unrounded
+0.0316956564) is kept as a documented upper robustness bound, not the value any config uses.
+Described in every config's header as "an approximate QLFS panel estimate," not "the official SA
+separation rate" -- see the design-variable audit below for exactly what it can't reproduce.
+
+**Design-variable audit, before choosing a resampling scheme.** Searched every one of the four
+quarterly files' full column lists and their Stata variable labels -- a design variable can sit
+under a name that doesn't say what it is, so names alone weren't enough -- for a rotation-group
+indicator, a primary sampling unit (PSU), an enumeration-area/cluster code, or a wave indicator.
+This extends the original audit, which checked only 2025 Q2: all four files carry `Stratum`/
+`STRATUM` and nothing else design-related. `UQNO` is used only as the household identifier it's
+documented to be (the linkage this notebook already relies on), never decoded for extra
+structure it isn't documented to carry.
+
+**The uncertainty estimate is now a household-cluster bootstrap, stratified by `Stratum`**, not
+an individual-record bootstrap treating each matched person as an independent draw. Cluster
+unit is (quarter-pair, `UQNO`) -- a household re-appearing in a later pair is a distinct cluster
+each time it's matched, never double-counted as one unit across pairs. Each of 2,000 replicates
+resamples, independently within every one of 248 strata, as many households as that stratum
+actually contributes, then pools every matched person in the resampled households. Result:
+quarterly bootstrap SE 0.001822, monthly bootstrap SE 0.000645, 95 per cent CI
+[0.02837, 0.03086] -- close to, not dramatically wider than, what an (incorrect) individual-
+record bootstrap on this same data would give, since the consistent sample averages only 1.33
+matched people per household. **This still doesn't reproduce StatsSA's own published panel
+non-response adjustment**, which needs rotation-group and PSU information neither this notebook
+nor its four source files has access to -- stated as a limitation, not smoothed over, in both
+the notebook and every config's header comment.
+
+**Both re-checks the earlier separation-rate adoption required, redone for this rate too.**
+`trace_demo.yaml`'s agent 32 was re-traced under 0.0296 rather than assumed unchanged from the
+0.0317 version: exact state transitions (from `model.trace_dataframe()`) are SEARCHING at step
+1, DISCOURAGED at 6, EMPLOYED at 15, DISCOURAGED at 24, EMPLOYED at 34, DISCOURAGED at 78 (a
+roughly 44-step stable spell), EMPLOYED at 87, DISCOURAGED at 97, EMPLOYED at 107, DISCOURAGED
+at 111, EMPLOYED at 121, running employed to the step-150 end -- five full discouragement/
+re-entry cycles, still a clean demonstration of locked commitment 6, figure regenerated and
+config header updated to describe this exact trajectory rather than the previous one.
+
+The scarce-vacancy smoke test was re-run in full across seeds 1-5, not spot-checked. `fill_ratio`
+is still exactly 1.00 in both arms on every seed -- vacancies remain the binding constraint, the
+condition the sign pattern needs. Search intensity rises sharply on every seed (+43.1 to
++54.1 per cent, versus +1.5 to +15.0 per cent under the previous 0.0317 re-check -- a
+substantially stronger signal, not a weaker one, under the lower rate). Vacancies and matches
+barely move and in either direction (-5.4 to +4.5 per cent; they move identically to each other,
+since a fill ratio pinned at 1.00 means matches are vacancies). Unemployed count rises sharply
+(+41.2 to +48.9 per cent) and `theta` falls in the subsidy arm on every seed (from 0.0126-0.0177
+down to 0.0084-0.0120). Employment moves by less than 5 per cent in either direction on every
+seed (-4.9 to +4.1 per cent) -- small next to the intensity and unemployment movements, the
+same "search intensity rises, employment barely moves" pattern Banerjee and Sequeira (2023)
+document, and if anything more decisive here than in either of the two earlier versions of this
+smoke test.
+
+## The search-position draw oversampled the CBD centre, and it explains the flat firm_radius calibration region
+
+The 17 August audit's sixth finding: at the reported calibrated values, changing `firm_radius`
+from 4.1 to 6.0 produced identical simulation histories and identical moments at seed 42. The
+cause was a sampling bug, not a genuine flat spot in the model's economics. `agents.py`'s
+`search_positions()` drew a ticket's radius as `cbd_radius * belief_multiplier * U`, uniform
+over the *radius*, while `model.py`'s firm placement already drew `cbd_radius * sqrt(U)`,
+uniform over the disk's *area* -- the two draws that are supposed to describe the same
+CBD-zone geography used different distributions. A uniform-radius draw packs samples near the
+centre (mean radius `R/2`); a uniform-area draw doesn't (mean radius `2R/3`). Confirmed directly
+with a 10,000-draw fixed-seed test before touching the fix: `test_search_positions_are_uniform_
+over_the_cbd_disk_area_not_the_radius` measured a mean radius of 2.499 at `cbd_radius=5.0`
+against the `R/2` value of 2.5, not the correct `2R/3` value of 3.333. Fixed to
+`cbd_radius * belief_multiplier * sqrt(U)`, matching the firm draw; angle sampling and
+`belief_multiplier`'s own role (scaling the radius for D2's targeting-bias mechanism) are
+untouched.
+
+**The consequence for `firm_radius` identification is geometric, not statistical.** With
+`belief_multiplier=1` (D2's unbiased case), both search tickets and firms are now confirmed to
+be drawn uniformly within the same disk of radius `cbd_radius` around the CBD, so no ticket-firm
+pair can ever be more than `2 * cbd_radius` apart. A `firm_radius` at or beyond that diameter
+makes every firm reachable from every ticket regardless of its exact value -- the calibration
+loss stops responding to `firm_radius` at all past that point, which is exactly the flat region
+the audit measured (4.1 and 6.0 both sit past `2 * 2.0 = 4.0`, `baseline.yaml`'s diameter).
+`calibrate.py`'s `DEFAULT_BOUNDS` for `firm_radius` is now `(1.0, 4.0)`, not `(1.0, 6.0)`, and a
+new `_validate_firm_radius_bound()` check raises `ValueError` if a caller supplies a wider upper
+bound than `2 * base.cbd_radius` while `belief_multiplier == 1` -- explaining, in the error
+itself, that every ticket-firm pair becomes reachable past that point. A separate,
+deterministic regression test (`test_firm_radius_beyond_the_geometric_maximum_is_a_flat_region`)
+keeps two calibration-irrelevant values (4.1 and 6.0) producing byte-identical histories, to
+document why they're excluded rather than to legitimise them as a search domain.
+
+`CalibrationResult` also now carries `boundary_adjacent_params`: any parameter landing within
+one per cent of either edge of its own search box is flagged there, whether or not it happens to
+be `firm_radius` -- a numerical estimate that close to a wall is weakly identified regardless of
+whether the box itself is geometrically well-posed, and Task 8's no-false-success gate needs
+this signal available on every `CalibrationResult`, not computed ad hoc after the fact.
+
+**This directly supersedes "The re-run campaign" section's `firm_radius=4.827` finding above.**
+That section described `firm_radius=4.827` landing "inside its search box, not at a wall -- an
+actual interior optimum, not an optimiser reporting that the box was drawn wrong." Under the
+corrected geometry, `4.827` is *past* the `4.0` diameter -- squarely inside the flat,
+unidentified region the old `(1.0, 6.0)` box wrongly made searchable, not an interior optimum at
+all. Every specific number that section reports (the two "well-fit" moments, the `long_term_share`
+tension diagnosis, the `reentry_threshold` sweep) was measured at a parameter point now known to
+be geometrically meaningless for `firm_radius` specifically, and needs re-measuring under the
+corrected sampling and the corrected `(1.0, 4.0)` box -- done in Task 8 of the verification
+remediation plan, not here, since it also depends on Tasks 6 and 7's changes to the calibration
+engine and SQ1 machinery landing first.
+
+## The MSM weight matrix was quietly rewarding noisy candidates, not just missing a simulation-variance term
+
+M9's original correction (see "Two corrections to not-yet-built code, from reading McFadden and
+Pissarides directly" and "Week 4, calibrate.py -- the MSM engine, D12 and M9 implemented exactly
+as specified", both above) was half right and half wrong in a way that only shows up once you
+ask what the formula actually does across candidates, not just at one point. McFadden (1989)
+does decompose total MSM estimator variance into a data-sampling term and a separate simulation
+term (p.1006), and does support fixed common random draws as parameters change -- both correctly
+cited. What McFadden's decomposition does **not** license is recomputing a diagonal inverse-
+variance weight `1 / (data_SE^2 + sim_var)` from *each candidate's own* simulation variance,
+inside the loss function, at every evaluation. The implemented version did exactly that: a
+candidate landing in a noisier region of parameter space got a smaller weight and therefore a
+*cheaper* loss for the same deviation from target, purely because it was noisy -- an MSM
+estimator is supposed to be indifferent to where its own noise happens to be larger, not
+rewarded for finding it. Nothing in the 17 August audit evidence flagged this by number, but
+it's a direct consequence of re-reading the implemented formula against McFadden's actual
+argument while fixing the surrounding calibration bugs, and it needed fixing in the same pass
+as the bounds and sampling issues, not left for a later session to rediscover independently.
+
+**The fix is a two-step, fixed-weight procedure**, matching McFadden's decomposition without
+reopening the discount-noisy-candidates hole. `MSMWeights` is a new frozen dataclass carrying
+the ordered moment keys, the weight matrix itself, the parameter point (if any) the simulation-
+covariance component was estimated at, and the seeds used for that estimate. `quadratic_loss`
+is the pure `g.T @ W @ g` form, taking no dependency on how `g` or `W` were built. `msm_loss`
+now takes a fixed `MSMWeights` argument and never reads a candidate's own simulation variance
+into its weight -- confirmed directly by `test_msm_loss_gives_no_discount_to_a_higher_variance_
+candidate`, which forces two candidates to an identical deviation with simulation variances of
+0.001 and 50.0 respectively and checks the returned loss is bit-identical.
+
+`calibrate()` now runs two full search stages, each an LHS sweep plus Nelder-Mead from the
+three best distinct LHS points (`n_restarts`, configurable):
+
+1. **W0** = `pinv(S_data)`, `S_data` the diagonal matrix of empirical variances (off-diagonal
+   entries are zero -- `discouraged_share` and `long_term_share` are both QLFS-derived but come
+   from separate notebooks with independent bootstraps that never estimated their joint
+   sampling covariance, so zero is documented as "not estimated," not assumed correct). Held
+   fixed for the whole preliminary search.
+2. At the preliminary search's optimum, simulate `WEIGHT_SEEDS` (`range(2001, 2051)`, 50 seeds
+   disjoint from `CALIBRATION_SEEDS` 1-15 and `VALIDATION_SEEDS` 1001-1050) and estimate the
+   full 4x4 simulation covariance matrix there (`np.cov` over the raw per-seed moment draws,
+   not just the four per-moment variances the old code used).
+3. **W1** = `pinv(S_data + S_sim / 50)`. Held fixed for a second, independent search from
+   scratch. This search's result is what `CalibrationResult` reports.
+
+A ridge (`1e-8 * trace`) is added only if a covariance matrix is rank-deficient, and its exact
+value is stored on the `MSMWeights` rather than hidden inside the inverse call.
+
+**Optimiser status is now part of the public result, not assumed.** `CalibrationResult` carries
+`success`, `message`, `selected_restart_index`, `n_restarts`, `n_converged_restarts`, the fixed
+`weights` the final stage searched under, and `preliminary_params` (the W0-stage optimum W1 was
+estimated from). If every restart in a stage fails to converge, `calibrate()` raises
+`RuntimeError` naming every restart's SciPy status and message, rather than returning a
+parameter vector nobody actually validated as an optimum -- `test_calibrate_raises_when_no_
+restart_converges` forces this with a monkeypatched `minimize` that always reports failure.
+
+This roughly doubles the wall-clock cost of a campaign (two full search stages instead of one,
+each with up to three restarts instead of one Nelder-Mead run), so D4's performance gate needs
+re-checking against the real cost once Task 8 runs the corrected campaign -- flagged here rather
+than discovered as a surprise during that run.
+
+## SQ1 is now a one-command, paired-seed CLI that refuses to report a constrained delta_a it can't stand behind
+
+Every earlier SQ1 number in this file (the smoke test, "matching.py, the first SQ1 number...",
+"An independent verification... invalidates delta_a=-0.0025") was produced by an ad hoc script
+written for that session, never committed, never reusable without retyping the whole comparison
+by hand. `src/sq1.py` replaces all of that with one command:
+
+```
+python -m src.sq1 --baseline configs/baseline.yaml --frictionless configs/frictionless.yaml \
+    --seeds 1:20 --out-dir results/published
+```
+
+**Refuses to run against a bad config pair, before touching a single seed.** Both YAML files are
+loaded as plain dictionaries (not `Config` instances, so a field one file omits entirely stays
+visible) and compared; anything other than exactly `transport_cost_rate` differing raises a
+`ValueError` naming the actual diff. This is the direct fix for the failure mode that produced
+the invalidated `delta_a=-0.0025` figure -- that comparison ran without anyone checking the two
+files still agreed on everything else.
+
+**Constant returns is tested per seed per arm, not assumed once.** For every seed,
+`matching.fit_matching_function` runs on both arms' post-burn-in windows; a seed only
+contributes a `delta_a_constrained` if CRS is NOT rejected in *either* arm at that seed. The
+unconstrained `delta_a` (elasticities and intercept, no CRS restriction) is computed for every
+seed regardless, as the sensitivity check Task 7 asks for.
+
+**The headline gate is a real hypothesis test, not an eyeball threshold.** For each arm
+separately, an exact one-sided binomial test (`scipy.stats.binomtest`) asks whether that arm's
+observed CRS-rejection count over `n` seeds is higher than the test's own nominal size (`alpha`,
+default 0.05) would produce by chance if CRS genuinely held everywhere. If either arm's
+binomial p-value is below `alpha`, `constrained_headline_reportable` is `False` and the printed
+summary states the honest finding plainly: the assumed Cobb-Douglas matching technology does not
+survive constant-returns testing often enough in at least one arm to trust a constrained
+`delta_a`, and reporting one anyway would misrepresent an unidentified quantity as a clean
+result. The per-seed CSV (`sq1_seed_results.csv`) and summary JSON (`sq1_summary.json`) are
+written either way -- both arms' full elasticities, intercepts, Wald p-values, and the
+CRS-survives-both flag, plus the paired unconstrained sensitivity figures, are the honest
+descriptive record regardless of whether the constrained headline clears the gate.
+
+**`.gitignore` now allowlists `results/published/*.csv` and `*.json` specifically**, rather than
+leaving the whole `results/` tree either fully tracked or fully ignored -- `results/cache/` and
+`results/figures/` stay ignored as before, and nothing written into `results/published/` by
+accident (a stray cache dump, an exploratory figure) becomes committable just by sitting in the
+same directory as the two files this task actually produces. Neither output file contains
+per-agent or per-record data -- both are aggregate regression statistics (elasticities,
+p-values, fitted efficiencies) over a completed run's own `(u, v, m)` time series, confirmed by
+inspecting the actual column list, not assumed from the code alone.
+
+Task 8 runs this against the corrected `baseline.yaml`/`frictionless.yaml` pair (Tasks 1 and 4)
+and the corrected spatial sampling (Task 5) for the first time; whatever it reports there is the
+real SQ1 headline (or the real "Cobb-Douglas doesn't survive" finding), superseding every
+earlier number in this file regardless of this task's own changes.
+
+## Every moment notebook now reads THESIS_DATA_ROOT, not a committed absolute path
+
+The four notebooks under `notebooks/moments/` each hardcoded
+`DATA_ROOT = Path(r"C:\Users\aakas\...")` -- this machine's own path, committed to a
+public repository, and the only thing standing between "clone and run" and "edit four lines
+first" for anyone else who ever tries to reproduce the moments from raw microdata. Replaced with
+`Path(os.environ["THESIS_DATA_ROOT"])` in notebooks 01, 02 and 03 (04 is literature-only and
+touches no microdata, so it needs no data root at all); `data/README.md` now documents setting
+the one shared environment variable before running any of them, rather than editing a line per
+notebook.
+
+**Restarted and re-executed all four notebooks end to end** against the real microdata on this
+machine (`$env:THESIS_DATA_ROOT` set to the same folder the old hardcoded path pointed at), not
+just checked that the refactored code parses. Execution counts are consecutive (1..3, 1..5,
+1..7, 1..2) in every notebook, confirming a clean top-to-bottom run rather than cells executed
+out of order or re-run piecemeal during editing. `data/moments.csv` came back **byte-identical**
+to the version already on disk (confirmed by `git status` showing no diff) -- SHA-256
+`a5a06088f372efca836cc67354ae57fe5887a40fbb6b31a12149e3de7272d32f` -- which is itself a real
+reproducibility check: the same four notebooks, run fresh from the same source data, with the
+only change being *how* they locate that data, reproduce every earlier number exactly.
+
+## The corrected campaign, run once, fails the no-false-success gate on two independent grounds -- an honest structural rejection, not a bug
+
+The full campaign ran against `configs/baseline.yaml`, commit `c854f84759bc17c0e96a20368bf9824abd47f2d6`,
+`data/moments.csv` SHA-256 `a5a06088f372efca836cc67354ae57fe5887a40fbb6b31a12149e3de7272d32f`: 200
+Latin-hypercube points, three Nelder-Mead restarts, both weight stages (W0 then W1 at 50 disjoint
+`WEIGHT_SEEDS`), 50 disjoint `VALIDATION_SEEDS` at the reported optimum -- the exact specification
+Task 8 calls for, unrounded results and full optimiser status written to
+`results/published/calibration_result.json` and `results/published/calibration_fit.csv`. All
+three restarts converged (`success=True`, "Optimization terminated successfully").
+
+**The result itself does not clear the gate.** Two of the four conditions Task 8 names as
+disqualifying both hold:
+
+- `search_cost_per_trip = 0.005` sits exactly at its lower bound, and `firm_radius = 1.0052`
+  sits within 0.5 per cent of its own lower bound (1.0) -- both flagged by
+  `CalibrationResult.boundary_adjacent_params`, both weakly identified rather than genuine
+  interior estimates.
+- `long_term_share` simulates at exactly `0.0000` against an empirical `0.7744`, the same
+  "target the model cannot generate at all" failure mode the gate names explicitly, not a
+  target that merely missed by a wide margin.
+
+**`transport_budget_share` is also badly off** (simulated `1.1131` against empirical `0.1058`,
+a standardised residual of roughly +44) -- confirming what "The size of the correction is the
+actual finding" (Task 3's entry above) predicted before this campaign ever ran: the corrected,
+conditional-daily estimand is roughly an order of magnitude larger than what the old formula's
+apparent 0.5pp fit was actually measuring, and the model cannot reach it within
+`search_cost_per_trip`'s current box even at the box's own floor.
+
+**The preliminary (W0) and final (W1) optima disagree about which corner to sit in, and the
+weight matrix explains why.** W0 (data variance alone) found `firm_radius = 3.809` -- close to
+the old, geometrically-flat region this remediation already fixed in Task 5. W1 (data variance
+plus the simulation covariance estimated at that W0 point) moved the search to the *opposite*
+corner, `firm_radius = 1.005`. The fitted `W1` weight matrix explains the pull:
+`discouraged_share` carries a weight of roughly 157,520 and `transport_budget_share` roughly
+4,480, while `distance_gradient_slope` carries roughly 0.5 -- four to five orders of magnitude
+apart. With `distance_gradient_slope` functionally weightless (consistent with "the weight
+imbalance" already diagnosed pre-remediation), the search reduces to satisfying
+`discouraged_share` and `transport_budget_share` as best it can, and the corner that best serves
+those two happens to be the one where `firm_radius` and `search_cost_per_trip` are both pinned
+low, not the corner that helps `long_term_share`.
+
+**The response-surface diagnosis Task 8 asks for, run directly rather than assumed.** Held
+`initial_search_capital` and `firm_kappa` at their calibrated values and swept the three
+admissible levers one at a time: `firm_radius` across its entire box (1.0 to 4.0, seven points),
+`separation_rate` (lambda) from 0.015 to 0.06, and `household_inflow` (g) from 0.004 to 0.032 --
+five common-random-number seeds per point for speed, full results in
+`results/published/long_term_share_response_surface.json`. **`long_term_share` simulates at
+exactly `0.0000` at every one of the fifteen points tried, with no exception.** This is a
+stronger finding than the pre-remediation diagnosis ("a `firm_radius` trade-off"): under the
+corrected sampling and bounds, there is no trade-off to navigate -- the moment is unreachable
+across the whole tested admissible region, not merely difficult to reach without cost elsewhere.
+
+**Why, mechanically:** ran the model once at the calibrated point (seed 42, post-burn-in window)
+and inspected it directly rather than guessing. Mean active-searcher count (`u`) is only 18 of
+500 agents; mean discouraged count is 120; mean employed is 362. Among agents *currently*
+searching, the longest any of them has been in that state is 4 months -- nobody has ever come
+close to the 12-month `long_term_share` threshold. `discouraged_share` is being fit almost
+entirely through the discouragement channel (as the pre-remediation diagnosis already found),
+and whenever an agent *is* actively searching, the match rate relative to that small pool is
+high enough (mean 11.1 matches against a mean searching pool of 18) that spells resolve in a
+handful of months. Sweeping `firm_radius`, `separation_rate` and `household_inflow` all move
+`u`, `discouraged`, and the match rate together, but none of them, across the ranges tried,
+produces a regime where a meaningful number of agents search continuously for a year.
+
+**Per Task 8's no-false-success gate and the plan's completion definition, this calibration is
+not usable as a headline result.** Not from a bug -- every correction in Tasks 1 through 7 is
+implemented and verified, the notebooks reproduce byte-identical inputs, the optimiser converged
+on all three restarts, and the response surface was actually swept, not assumed empty. The
+finding is that this model, as specified, cannot simultaneously sustain the empirical
+combination of a large discouraged population *and* long active-search spells within the
+current four-parameter mapping. **The mechanism question for Aakash and the supervisor**,
+prepared rather than answered unilaterally: the model's search-intensity margin (trips per
+period, M5) and matching mechanics currently let any agent who resumes active search get
+matched quickly once vacancies exist at all, so nothing in the current mechanism can produce a
+long *active* search spell independent of the discouragement channel -- closing that gap would
+need either a fifth free parameter (reopening the "exactly identified, four parameters, four
+moments" framing this project has held since the build plan was written) or a different
+mechanism entirely (a reservation-wage margin, match quality heterogeneity, or something else),
+neither of which this remediation adds without that conversation happening first, per the plan's
+explicit instruction. Week 5 policy work does not proceed on this calibration as though it were
+usable, per the plan's completion definition.
+
+## The real SQ1 number, and the public repository brought in line with what actually exists
+
+**SQ1, run for real against the corrected configs, is a trustworthy number for the first time.**
+Twenty paired seeds, `configs/baseline.yaml` against `configs/frictionless.yaml` (a genuine
+one-field counterfactual since Task 1, on the corrected separation rate since Task 4, under the
+corrected spatial sampling since Task 5): `baseline` rejects constant returns on 3 of 20 seeds
+(binomial p=0.0755, not significant against the test's own 5 per cent size), `frictionless` on
+1 of 20 (p=0.6415) -- neither arm fails the headline gate. `delta_a = -0.0104`, 95 per cent CI
+`[-0.0307, 0.0126]`, over the 16 seeds where CRS survives in both arms: statistically
+indistinguishable from zero, the same qualitative reading as the invalidated `-0.0025` figure,
+but now measured on a config pair that actually differs in one field, a separation rate that's
+been re-linked, and a spatial draw that's been fixed -- not a lucky coincidence, a genuine
+answer that happens to still say "no detectable effect at this population." Written to
+`results/published/sq1_seed_results.csv` and `sq1_summary.json`, reproducible with the exact
+command in the README.
+
+**The microdata-detection hook's own documentation outran what its code actually checked.** It
+claimed to catch "a QLFS extract renamed to results.csv" by content, but the magic-byte list
+only covered the *newer* Stata format's human-readable `<stata_dta>` header -- the real
+QLFS/NHTS files on disk are format 113 (Stata 8/9), which has no readable signature at all, just
+a 4-byte binary header. Added a real, tested detector for it (release-number byte, byteorder
+byte, filetype byte, unused byte, requiring all four together to keep the false-positive rate
+on arbitrary binary files negligible), confirmed against the actual QLFS/NHTS files on this
+machine renamed to `.csv`, not a synthetic byte pattern invented for the test.
+**Plain CSV re-exports of microdata still have no reliable content signature** -- said plainly
+in the hook's own docstring now, rather than implied away by a claim that overreached. The
+hook's error message also previously said the DataFirst licence itself "forbids redistributing
+raw microdata" -- DataFirst's QLFS/PALMS/NIDS-W5/NHTS catalogue entries are CC-BY, a permissive
+licence; the actual restriction is this project's own policy (never commit individual-level
+records, regardless of licence tier), not a claim about what CC-BY forbids. Corrected in both
+the hook's docstring and its printed message.
+
+**`.pre-commit-config.yaml`'s tool revisions had drifted from `pyproject.toml`'s pins** (Ruff
+v0.12.7 vs. the pinned 0.16.2, nbstripout 0.8.1 vs. the pinned 0.9.1) since the Week 1 scaffold
+-- updated to match, confirmed by actually running `pre-commit run --all-files` against the new
+revisions rather than just editing the version strings and hoping they resolve.
+
+**`README.md` and `CHANGELOG.md` described a project stuck at its Week 1 scaffold** ("Under
+active development... this section gets filled in as each build phase lands") despite Weeks 2
+through 4 being implemented and this entire remediation having landed on top of them. Both now
+state the real, current, unrounded status: which weeks are implemented, that the calibration
+does not clear its own gate and why, the one number (SQ1) that is trustworthy right now with the
+exact command that reproduces it, and what's still not done -- including the open mechanism
+question this file's own diagnosis surfaced. No new version tag is cut: `v0.2` remains the most
+recent milestone that has actually passed its own gate, and creating a `v0.3` or `v0.4` for a
+calibration that just failed its own no-false-success gate would misrepresent what's actually
+true, exactly the failure mode this whole remediation exists to fix.
