@@ -109,7 +109,9 @@ def test_firm_radius_beyond_the_geometric_maximum_is_a_flat_region():
     two different values in that region must produce byte-identical histories under the same
     seed. SPATIAL's cbd_radius=2.0 puts the geometric maximum at 4.0; 4.1 and 6.0 are both
     comfortably past it. See DECISIONS.md, "The search-position draw oversampled the CBD
-    centre, and it explains the flat firm_radius calibration region.\" """
+    centre, and it explains the flat firm_radius calibration region" (quote marks omitted
+    at the very end to keep the docstring delimiter unambiguous).
+    """
     a = CityModel(replace(SPATIAL, firm_radius=4.1)).run()
     b = CityModel(replace(SPATIAL, firm_radius=6.0)).run()
     assert a["u"].tolist() == b["u"].tolist()

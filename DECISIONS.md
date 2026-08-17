@@ -1441,3 +1441,63 @@ be geometrically meaningless for `firm_radius` specifically, and needs re-measur
 corrected sampling and the corrected `(1.0, 4.0)` box -- done in Task 8 of the verification
 remediation plan, not here, since it also depends on Tasks 6 and 7's changes to the calibration
 engine and SQ1 machinery landing first.
+
+## The MSM weight matrix was quietly rewarding noisy candidates, not just missing a simulation-variance term
+
+M9's original correction (see "Two corrections to not-yet-built code, from reading McFadden and
+Pissarides directly" and "Week 4, calibrate.py -- the MSM engine, D12 and M9 implemented exactly
+as specified", both above) was half right and half wrong in a way that only shows up once you
+ask what the formula actually does across candidates, not just at one point. McFadden (1989)
+does decompose total MSM estimator variance into a data-sampling term and a separate simulation
+term (p.1006), and does support fixed common random draws as parameters change -- both correctly
+cited. What McFadden's decomposition does **not** license is recomputing a diagonal inverse-
+variance weight `1 / (data_SE^2 + sim_var)` from *each candidate's own* simulation variance,
+inside the loss function, at every evaluation. The implemented version did exactly that: a
+candidate landing in a noisier region of parameter space got a smaller weight and therefore a
+*cheaper* loss for the same deviation from target, purely because it was noisy -- an MSM
+estimator is supposed to be indifferent to where its own noise happens to be larger, not
+rewarded for finding it. Nothing in the 17 August audit evidence flagged this by number, but
+it's a direct consequence of re-reading the implemented formula against McFadden's actual
+argument while fixing the surrounding calibration bugs, and it needed fixing in the same pass
+as the bounds and sampling issues, not left for a later session to rediscover independently.
+
+**The fix is a two-step, fixed-weight procedure**, matching McFadden's decomposition without
+reopening the discount-noisy-candidates hole. `MSMWeights` is a new frozen dataclass carrying
+the ordered moment keys, the weight matrix itself, the parameter point (if any) the simulation-
+covariance component was estimated at, and the seeds used for that estimate. `quadratic_loss`
+is the pure `g.T @ W @ g` form, taking no dependency on how `g` or `W` were built. `msm_loss`
+now takes a fixed `MSMWeights` argument and never reads a candidate's own simulation variance
+into its weight -- confirmed directly by `test_msm_loss_gives_no_discount_to_a_higher_variance_
+candidate`, which forces two candidates to an identical deviation with simulation variances of
+0.001 and 50.0 respectively and checks the returned loss is bit-identical.
+
+`calibrate()` now runs two full search stages, each an LHS sweep plus Nelder-Mead from the
+three best distinct LHS points (`n_restarts`, configurable):
+
+1. **W0** = `pinv(S_data)`, `S_data` the diagonal matrix of empirical variances (off-diagonal
+   entries are zero -- `discouraged_share` and `long_term_share` are both QLFS-derived but come
+   from separate notebooks with independent bootstraps that never estimated their joint
+   sampling covariance, so zero is documented as "not estimated," not assumed correct). Held
+   fixed for the whole preliminary search.
+2. At the preliminary search's optimum, simulate `WEIGHT_SEEDS` (`range(2001, 2051)`, 50 seeds
+   disjoint from `CALIBRATION_SEEDS` 1-15 and `VALIDATION_SEEDS` 1001-1050) and estimate the
+   full 4x4 simulation covariance matrix there (`np.cov` over the raw per-seed moment draws,
+   not just the four per-moment variances the old code used).
+3. **W1** = `pinv(S_data + S_sim / 50)`. Held fixed for a second, independent search from
+   scratch. This search's result is what `CalibrationResult` reports.
+
+A ridge (`1e-8 * trace`) is added only if a covariance matrix is rank-deficient, and its exact
+value is stored on the `MSMWeights` rather than hidden inside the inverse call.
+
+**Optimiser status is now part of the public result, not assumed.** `CalibrationResult` carries
+`success`, `message`, `selected_restart_index`, `n_restarts`, `n_converged_restarts`, the fixed
+`weights` the final stage searched under, and `preliminary_params` (the W0-stage optimum W1 was
+estimated from). If every restart in a stage fails to converge, `calibrate()` raises
+`RuntimeError` naming every restart's SciPy status and message, rather than returning a
+parameter vector nobody actually validated as an optimum -- `test_calibrate_raises_when_no_
+restart_converges` forces this with a monkeypatched `minimize` that always reports failure.
+
+This roughly doubles the wall-clock cost of a campaign (two full search stages instead of one,
+each with up to three restarts instead of one Nelder-Mead run), so D4's performance gate needs
+re-checking against the real cost once Task 8 runs the corrected campaign -- flagged here rather
+than discovered as a surprise during that run.

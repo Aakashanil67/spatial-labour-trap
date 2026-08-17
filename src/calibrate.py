@@ -4,18 +4,27 @@ in data/moments.csv (locked commitment 3). Exactly identified: four parameters, 
 no slack for a formal overidentification test -- the out-of-calibration validation against
 Banerjee and Sequeira's null result is the actual substitute (see DECISIONS.md).
 
-The loss weights by inverse (data sampling variance + simulation variance), not data variance
-alone (M9's correction to the original prompt library -- McFadden 1989 decomposes total MSM
-estimator variance into a data term and a separate simulation term, and weighting by data
-variance alone silently assumes the simulation term is negligible). Simulation variance is
-estimated directly from the spread of the 15 common-random-number seeds at each evaluation, so
-it's never assumed away.
+**The weight matrix is fixed for the whole of one search, not recomputed at each candidate.**
+An earlier version of this module weighted each candidate's deviation by the inverse of (data
+SE^2 + that candidate's own simulation variance) -- so a candidate landing in a noisier region
+of parameter space got a smaller weight and therefore a cheaper loss for the same deviation,
+purely because it was noisy. McFadden (1989) does support using fixed common random draws as
+parameters change and folding simulation error into the estimator's uncertainty (p.1006), but
+neither of those licenses recomputing a diagonal inverse-variance weight from the candidate's
+own noise at every evaluation. This module now builds one MSMWeights matrix ahead of a search
+and holds it fixed throughout: a two-step procedure (W0 = data variance alone for a preliminary
+search, W1 = data variance + simulation covariance estimated at the preliminary optimum for the
+final search), matching McFadden's decomposition without re-opening the discount-noisy-
+candidates hole. See DECISIONS.md, "The MSM weight matrix was quietly rewarding noisy
+candidates, not just missing a simulation-variance term."
 
 Common random numbers (D12): CALIBRATION_SEEDS is reused at every evaluation during both the
 Latin hypercube and Nelder-Mead stages, so the loss is a deterministic function of the
-parameters -- Nelder-Mead has no defence against a noisy objective otherwise, and a restart
-policy would treat the symptom, not the cause. VALIDATION_SEEDS (disjoint) is used only once,
-at the reported optimum, so the fit quality isn't measured on the seeds the optimiser fitted to.
+parameters -- Nelder-Mead has no defence against a noisy objective otherwise. Three restarts
+from the three best distinct LHS points, under the same seeds and the same fixed weight matrix,
+guard against a single unlucky simplex; a calibration where no restart converges raises rather
+than silently returning a non-answer. VALIDATION_SEEDS (disjoint) is used only once, at the
+reported optimum, so the fit quality isn't measured on the seeds the optimiser fitted to.
 """
 
 from __future__ import annotations
@@ -38,6 +47,12 @@ PARAM_NAMES: tuple[str, ...] = (
     "firm_radius",
     "firm_kappa",
 )
+
+# The second-stage simulation-covariance estimate (W1) is drawn from its own fixed seed set,
+# disjoint from CALIBRATION_SEEDS (1-15) and VALIDATION_SEEDS (1001-1050): reusing either would
+# let the weight matrix leak information from the search seeds into itself, or contaminate the
+# seeds the final fit quality is reported on.
+WEIGHT_SEEDS: tuple[int, ...] = tuple(range(2001, 2051))  # 50 seeds
 
 # Wide enough to let the optimiser move, centred on baseline.yaml's own already-validated
 # values, not picked from nothing -- see configs/baseline.yaml for what those are.
@@ -139,43 +154,126 @@ def simulate_moments(
     return result
 
 
+def _simulate_moment_matrix(
+    base: Config, params: dict[str, float], seeds: tuple[int, ...]
+) -> np.ndarray:
+    """Raw per-seed moments as an (n_seeds, 4) matrix, ordered by MOMENT_KEYS -- the input a
+    genuine simulation *covariance* estimate needs (np.cov), as opposed to simulate_moments'
+    per-moment variance-only summary."""
+    cfg = _config_with_params(base, params)
+    per_seed = run_moments_many(cfg, list(seeds))
+    return np.array([[m[key] for key in MOMENT_KEYS] for m in per_seed], dtype=float)
+
+
+@dataclass(frozen=True)
+class MSMWeights:
+    """A weight matrix fixed for the duration of one search stage. `estimated_at_params` and
+    `weight_seeds` record where the simulation-covariance component (if any) came from, so a
+    reader can tell a W0 (data variance only, no simulation component yet estimated) from a W1
+    (data + simulation covariance, estimated at a specific point) without re-deriving it."""
+
+    moment_keys: tuple[str, ...]
+    weight_matrix: np.ndarray
+    estimated_at_params: dict[str, float]
+    weight_seeds: tuple[int, ...]
+    ridge: float = 0.0  # documented numerical ridge added if the covariance sum was rank-deficient
+
+
+def quadratic_loss(deviations: np.ndarray, weight_matrix: np.ndarray) -> float:
+    """g.T @ W @ g -- the pure MSM quadratic form, independent of how W or g were built."""
+    return float(deviations @ weight_matrix @ deviations)
+
+
+def _data_covariance(empirical: EmpiricalMoments) -> np.ndarray:
+    """Diagonal S_data from the empirical standard errors. Off-diagonal entries are zero:
+    discouraged_share and long_term_share are both QLFS-derived, but come from separate
+    notebooks (01, 03) with independent bootstraps that never estimated their joint sampling
+    covariance -- zero is documented here as "not estimated," not silently assumed to be the
+    right answer, per Task 6's instruction to use a full empirical covariance block only where
+    one has actually been estimated."""
+    variances = np.array([empirical.standard_errors[key] ** 2 for key in MOMENT_KEYS])
+    return np.diag(variances)
+
+
+def _pinv_with_ridge(covariance: np.ndarray) -> tuple[np.ndarray, float]:
+    """pinv of `covariance`, adding a documented ridge scaled to the matrix trace only if
+    `covariance` is rank-deficient -- never an arbitrary constant hidden inside the inverse
+    call. Returns (weight_matrix, ridge_used) so the exact value can be stored, not just
+    applied."""
+    rank = np.linalg.matrix_rank(covariance)
+    if rank < covariance.shape[0]:
+        ridge = 1e-8 * float(np.trace(covariance))
+        covariance = covariance + ridge * np.eye(covariance.shape[0])
+    else:
+        ridge = 0.0
+    return np.linalg.pinv(covariance), ridge
+
+
+def _weights_from_covariance(
+    covariance: np.ndarray,
+    estimated_at_params: dict[str, float],
+    weight_seeds: tuple[int, ...],
+) -> MSMWeights:
+    weight_matrix, ridge = _pinv_with_ridge(covariance)
+    return MSMWeights(
+        moment_keys=MOMENT_KEYS,
+        weight_matrix=weight_matrix,
+        estimated_at_params=dict(estimated_at_params),
+        weight_seeds=weight_seeds,
+        ridge=ridge,
+    )
+
+
 def msm_loss(
     param_vector: np.ndarray,
     base: Config,
     empirical: EmpiricalMoments,
+    weights: MSMWeights,
     seeds: tuple[int, ...] = CALIBRATION_SEEDS,
 ) -> float:
-    """Weighted sum of squared deviations, weights = 1 / (data_SE^2 + simulation_variance) --
-    M9's corrected weight matrix, not data variance alone. Returns inf for a parameter point
-    that produces a nan moment (an infeasible or degenerate region of the parameter space),
-    so the optimiser is steered away from it rather than crashing on it."""
+    """g.T @ W @ g against a `weights` matrix that's FIXED for the whole search -- see the
+    module docstring for why a candidate-dependent weight (this module's earlier design) is
+    wrong: it silently discounts a candidate's own deviation whenever that candidate happens to
+    land in a noisier region, rather than only ever changing because the deviation itself
+    changed. Simulation variance at a candidate is not read here at all; it only ever enters
+    through the fixed `weights.weight_matrix` computed once, ahead of the search, by
+    calibrate(). Returns inf for a parameter point that produces a nan moment (an infeasible or
+    degenerate region of the parameter space), so the optimiser is steered away from it rather
+    than crashing on it."""
     params = dict(zip(PARAM_NAMES, param_vector, strict=True))
     simulated = simulate_moments(base, params, seeds)
 
-    loss = 0.0
-    for key in MOMENT_KEYS:
-        sim_mean, sim_var = simulated[key]
+    deviations = np.empty(len(weights.moment_keys))
+    for i, key in enumerate(weights.moment_keys):
+        sim_mean, _sim_var = simulated[key]
         if np.isnan(sim_mean):
             return float("inf")
-        data_value = empirical.values[key]
-        data_se = empirical.standard_errors[key]
-        weight = 1.0 / (data_se**2 + sim_var)
-        loss += weight * (sim_mean - data_value) ** 2
-    return float(loss)
+        deviations[i] = sim_mean - empirical.values[key]
+    return quadratic_loss(deviations, weights.weight_matrix)
 
 
 @dataclass(frozen=True)
 class CalibrationResult:
     params: dict[str, float]
     loss_at_optimum: float
-    lhs_best_loss: float  # the best loss found during the coarse sweep, before refinement
+    lhs_best_loss: float  # the best loss found during the coarse (final-stage) sweep
     validation_moments: dict[str, tuple[float, float]]  # (mean, variance_of_mean), 50 seeds
     n_lhs_points: int
-    n_nelder_mead_evaluations: int
+    n_nelder_mead_evaluations: int  # summed across every restart of the final stage
     # Parameter names whose calibrated value sits within _BOUNDARY_ADJACENCY_FRACTION of either
     # edge of its search box -- weakly identified, not a genuine interior optimum. Empty on a
     # clean run; a non-empty tuple is itself a finding, not something to round away.
     boundary_adjacent_params: tuple[str, ...] = ()
+    # Optimiser status of the SELECTED (lowest-loss, converged) restart of the final stage.
+    success: bool = True
+    message: str = ""
+    selected_restart_index: int = 0
+    n_restarts: int = 1
+    n_converged_restarts: int = 1
+    # The fixed weight matrix (W1: data variance + simulation covariance) the final stage was
+    # searched under -- travels with the result so a reader can see exactly what was held fixed.
+    weights: MSMWeights | None = None
+    preliminary_params: dict[str, float] | None = None  # the W0-stage optimum W1 was built from
 
 
 def _validate_firm_radius_bound(base: Config, bounds: dict[str, tuple[float, float]]) -> None:
@@ -228,52 +326,154 @@ def _lhs_points(bounds: dict[str, tuple[float, float]], n_points: int) -> list[d
     return [dict(zip(PARAM_NAMES, row, strict=True)) for row in scaled]
 
 
+@dataclass(frozen=True)
+class _RestartSearchResult:
+    """Internal: the outcome of one LHS-then-multi-restart search stage under one fixed
+    MSMWeights matrix."""
+
+    params: dict[str, float]
+    loss: float
+    lhs_best_loss: float
+    n_nelder_mead_evaluations: int
+    message: str
+    selected_restart_index: int
+    n_restarts: int
+    n_converged_restarts: int
+
+
+def _restart_search(
+    base: Config,
+    bounds: dict[str, tuple[float, float]],
+    empirical: EmpiricalMoments,
+    weights: MSMWeights,
+    n_lhs_points: int,
+    calibration_seeds: tuple[int, ...],
+    n_restarts: int,
+) -> _RestartSearchResult:
+    """One LHS sweep, then Nelder-Mead from the `n_restarts` best distinct LHS points, all
+    under the same `weights` and `calibration_seeds`. Selects the lowest-loss CONVERGED
+    restart; raises RuntimeError with every restart's SciPy status if none converged, rather
+    than returning a parameter vector that was never actually validated as an optimum."""
+    lhs_params = _lhs_points(bounds, n_lhs_points)
+    lhs_losses = [
+        msm_loss(
+            np.array([p[name] for name in PARAM_NAMES]), base, empirical, weights, calibration_seeds
+        )
+        for p in lhs_params
+    ]
+    order = np.argsort(lhs_losses)
+    best_lhs_loss = float(lhs_losses[order[0]])
+
+    starts: list[dict[str, float]] = []
+    seen: set[tuple[float, ...]] = set()
+    for idx in order:
+        point = lhs_params[idx]
+        key = tuple(point[name] for name in PARAM_NAMES)
+        if key in seen:
+            continue
+        seen.add(key)
+        starts.append(point)
+        if len(starts) == n_restarts:
+            break
+
+    restart_results = []
+    for start in starts:
+        x0 = np.array([start[name] for name in PARAM_NAMES])
+        nm_result = minimize(
+            msm_loss,
+            x0,
+            args=(base, empirical, weights, calibration_seeds),
+            method="Nelder-Mead",
+            bounds=[bounds[name] for name in PARAM_NAMES],
+            options={"xatol": 1e-4, "fatol": 1e-6, "maxiter": 500},
+        )
+        restart_results.append(nm_result)
+
+    converged_indices = [i for i, r in enumerate(restart_results) if r.success]
+    if not converged_indices:
+        statuses = "; ".join(
+            f"restart {i} (status={r.status}): {r.message}" for i, r in enumerate(restart_results)
+        )
+        raise RuntimeError(
+            f"no Nelder-Mead restart converged out of {len(restart_results)}: {statuses}"
+        )
+
+    winner_i = min(converged_indices, key=lambda i: restart_results[i].fun)
+    winner = restart_results[winner_i]
+
+    return _RestartSearchResult(
+        params=dict(zip(PARAM_NAMES, winner.x, strict=True)),
+        loss=float(winner.fun),
+        lhs_best_loss=best_lhs_loss,
+        n_nelder_mead_evaluations=sum(r.nfev for r in restart_results),
+        message=str(winner.message),
+        selected_restart_index=winner_i,
+        n_restarts=len(restart_results),
+        n_converged_restarts=len(converged_indices),
+    )
+
+
 def calibrate(
     base: Config,
     bounds: dict[str, tuple[float, float]] | None = None,
     n_lhs_points: int = 200,
+    n_restarts: int = 3,
     calibration_seeds: tuple[int, ...] = CALIBRATION_SEEDS,
     validation_seeds: tuple[int, ...] = VALIDATION_SEEDS,
+    weight_seeds: tuple[int, ...] = WEIGHT_SEEDS,
     empirical: EmpiricalMoments | None = None,
 ) -> CalibrationResult:
-    """Coarse Latin hypercube sweep over `bounds`, then Nelder-Mead from the best LHS point,
-    both stages against the same `calibration_seeds`. Reports the final moments at
-    `validation_seeds` (disjoint), so the fit quality shown isn't measured on the seeds the
-    optimiser was allowed to fit to."""
+    """Two-step fixed-weight MSM, each step an LHS sweep followed by `n_restarts` Nelder-Mead
+    restarts from the best distinct LHS points, all under common random numbers
+    (`calibration_seeds`):
+
+    1. W0 = pinv(data variance alone). Search under W0 for a preliminary estimate.
+    2. Simulate `weight_seeds` at that preliminary estimate, estimate the simulation
+       covariance there, build W1 = pinv(data variance + simulation covariance / len(weight_seeds)).
+    3. Search again, from scratch, under W1 -- the returned CalibrationResult is this final
+       search's outcome.
+
+    Reports validation moments at `validation_seeds` (disjoint from both `calibration_seeds`
+    and `weight_seeds`), so the fit quality shown isn't measured on seeds the optimiser or the
+    weight matrix ever saw."""
     bounds = bounds or DEFAULT_BOUNDS
     empirical = empirical or load_empirical_moments()
     _validate_firm_radius_bound(base, bounds)
 
-    lhs_params = _lhs_points(bounds, n_lhs_points)
-    lhs_losses = [
-        msm_loss(np.array([p[name] for name in PARAM_NAMES]), base, empirical, calibration_seeds)
-        for p in lhs_params
-    ]
-    best_idx = int(np.argmin(lhs_losses))
-    best_lhs_point = lhs_params[best_idx]
-    best_lhs_loss = lhs_losses[best_idx]
-
-    x0 = np.array([best_lhs_point[name] for name in PARAM_NAMES])
-    nm_result = minimize(
-        msm_loss,
-        x0,
-        args=(base, empirical, calibration_seeds),
-        method="Nelder-Mead",
-        bounds=[bounds[name] for name in PARAM_NAMES],
-        options={"xatol": 1e-4, "fatol": 1e-6, "maxiter": 500},
+    data_cov = _data_covariance(empirical)
+    w0 = _weights_from_covariance(data_cov, estimated_at_params={}, weight_seeds=())
+    preliminary = _restart_search(
+        base, bounds, empirical, w0, n_lhs_points, calibration_seeds, n_restarts
     )
 
-    final_params = dict(zip(PARAM_NAMES, nm_result.x, strict=True))
-    validation_moments = simulate_moments(base, final_params, validation_seeds)
+    sim_cov = np.cov(
+        _simulate_moment_matrix(base, preliminary.params, weight_seeds), rowvar=False, ddof=1
+    )
+    combined_cov = data_cov + sim_cov / len(weight_seeds)
+    w1 = _weights_from_covariance(
+        combined_cov, estimated_at_params=preliminary.params, weight_seeds=weight_seeds
+    )
+    final = _restart_search(
+        base, bounds, empirical, w1, n_lhs_points, calibration_seeds, n_restarts
+    )
+
+    validation_moments = simulate_moments(base, final.params, validation_seeds)
 
     return CalibrationResult(
-        params=final_params,
-        loss_at_optimum=float(nm_result.fun),
-        lhs_best_loss=float(best_lhs_loss),
+        params=final.params,
+        loss_at_optimum=final.loss,
+        lhs_best_loss=final.lhs_best_loss,
         validation_moments=validation_moments,
         n_lhs_points=n_lhs_points,
-        n_nelder_mead_evaluations=int(nm_result.nfev),
-        boundary_adjacent_params=_boundary_adjacent_params(final_params, bounds),
+        n_nelder_mead_evaluations=final.n_nelder_mead_evaluations,
+        boundary_adjacent_params=_boundary_adjacent_params(final.params, bounds),
+        success=True,
+        message=final.message,
+        selected_restart_index=final.selected_restart_index,
+        n_restarts=final.n_restarts,
+        n_converged_restarts=final.n_converged_restarts,
+        weights=w1,
+        preliminary_params=preliminary.params,
     )
 
 
@@ -282,15 +482,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", required=True, help="base YAML config (spatial, n_firms>0)")
     parser.add_argument("--moments", default="data/moments.csv", help="empirical moments CSV")
     parser.add_argument("--n-lhs-points", type=int, default=200)
+    parser.add_argument("--n-restarts", type=int, default=3)
     args = parser.parse_args(argv)
 
     base = Config.from_yaml(args.config)
     empirical = load_empirical_moments(args.moments)
-    result = calibrate(base, n_lhs_points=args.n_lhs_points, empirical=empirical)
+    result = calibrate(
+        base, n_lhs_points=args.n_lhs_points, n_restarts=args.n_restarts, empirical=empirical
+    )
 
     print(f"base config: {args.config}")
     print(f"LHS points: {result.n_lhs_points}  (best loss {result.lhs_best_loss:.6f})")
     print(f"Nelder-Mead evaluations: {result.n_nelder_mead_evaluations}")
+    print(
+        f"restarts: {result.n_converged_restarts}/{result.n_restarts} converged "
+        f"(selected #{result.selected_restart_index}: {result.message})"
+    )
+    if result.weights is not None:
+        ridge_note = f", ridge={result.weights.ridge:.3e}" if result.weights.ridge else ""
+        print(
+            f"final weight matrix estimated at {result.weights.weight_seeds and 'W1' or 'W0'} "
+            f"stage over {len(result.weights.weight_seeds)} weight seeds{ridge_note}"
+        )
     print(f"loss at optimum: {result.loss_at_optimum:.6f}")
     print()
     print("calibrated parameters:")

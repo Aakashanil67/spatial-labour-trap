@@ -18,9 +18,11 @@ from src.calibrate import (
     MOMENT_KEYS,
     PARAM_NAMES,
     EmpiricalMoments,
+    MSMWeights,
     calibrate,
     load_empirical_moments,
     msm_loss,
+    quadratic_loss,
     simulate_moments,
 )
 from src.config import Config
@@ -108,16 +110,75 @@ def test_load_empirical_moments_reads_real_moments_csv():
     assert not any(np.isnan(v) for v in empirical.values.values())
 
 
+def _identity_weights() -> MSMWeights:
+    """A trivial fixed-weight matrix (identity) for tests that only care about msm_loss's own
+    behaviour, not about how a real weight matrix gets built."""
+    return MSMWeights(
+        moment_keys=MOMENT_KEYS,
+        weight_matrix=np.eye(len(MOMENT_KEYS)),
+        estimated_at_params={},
+        weight_seeds=(),
+    )
+
+
+def test_quadratic_loss_matches_the_manual_g_transpose_w_g_computation():
+    deviations = np.array([1.0, -2.0, 0.5, 0.0])
+    weight_matrix = np.diag([2.0, 1.0, 4.0, 3.0])
+    expected = 2.0 * 1.0**2 + 1.0 * (-2.0) ** 2 + 4.0 * 0.5**2 + 3.0 * 0.0**2
+    assert quadratic_loss(deviations, weight_matrix) == pytest.approx(expected)
+
+
 def test_msm_loss_is_deterministic_at_a_fixed_parameter_vector():
     """D12's actual test: two evaluations of the loss at the same parameter vector, same
-    common-random-number seeds, return an identical float -- not just a close one."""
+    common-random-number seeds, same fixed weights, return an identical float -- not just a
+    close one."""
     empirical = EmpiricalMoments(
         values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
     )
+    weights = _identity_weights()
     x = np.array([0.02, 0.6, 2.0, 0.8])
-    loss_1 = msm_loss(x, SMALL, empirical, seeds=(1, 2, 3))
-    loss_2 = msm_loss(x, SMALL, empirical, seeds=(1, 2, 3))
+    loss_1 = msm_loss(x, SMALL, empirical, weights, seeds=(1, 2, 3))
+    loss_2 = msm_loss(x, SMALL, empirical, weights, seeds=(1, 2, 3))
     assert loss_1 == loss_2
+
+
+def test_weight_matrix_is_identical_across_candidate_evaluations():
+    """The fixed-weight design's whole point: the SAME MSMWeights object, unmutated, is used
+    for every candidate in a search -- unlike the earlier candidate-dependent weighting, where
+    the denominator changed from one evaluation to the next."""
+    empirical = EmpiricalMoments(
+        values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
+    )
+    weights = _identity_weights()
+    before = weights.weight_matrix.copy()
+    msm_loss(np.array([0.02, 0.6, 2.0, 0.8]), SMALL, empirical, weights, seeds=(1, 2, 3))
+    msm_loss(np.array([0.03, 0.9, 2.5, 1.2]), SMALL, empirical, weights, seeds=(1, 2, 3))
+    assert np.array_equal(weights.weight_matrix, before)
+
+
+def test_msm_loss_gives_no_discount_to_a_higher_variance_candidate(monkeypatch):
+    """The old formula's denominator included the candidate's own simulation variance, so a
+    noisier candidate got a smaller weight and a cheaper loss for the same deviation -- an
+    optimiser could exploit that by drifting into noisy regions. The fixed-weight design must
+    not reproduce it: two candidates with an identical deviation but wildly different
+    simulation variance must receive an identical loss, because the fixed weights.weight_matrix
+    never reads that variance at all."""
+    weights = _identity_weights()
+    empirical = EmpiricalMoments(
+        values=dict.fromkeys(MOMENT_KEYS, 0.0), standard_errors=dict.fromkeys(MOMENT_KEYS, 1.0)
+    )
+
+    def fake_simulate_moments(base, params, seeds):
+        variance = 0.001 if params["firm_kappa"] < 1.0 else 50.0  # wildly different variance
+        return dict.fromkeys(MOMENT_KEYS, (0.1, variance))  # identical deviation from 0.0
+
+    monkeypatch.setattr("src.calibrate.simulate_moments", fake_simulate_moments)
+
+    x_quiet = np.array([0.02, 0.6, 2.0, 0.5])  # firm_kappa < 1.0 -- "low variance" candidate
+    x_noisy = np.array([0.02, 0.6, 2.0, 1.5])  # firm_kappa >= 1.0 -- "high variance" candidate
+    loss_quiet = msm_loss(x_quiet, SMALL, empirical, weights)
+    loss_noisy = msm_loss(x_noisy, SMALL, empirical, weights)
+    assert loss_quiet == loss_noisy
 
 
 def test_simulate_moments_returns_all_four_keys_with_finite_variance():
@@ -144,12 +205,25 @@ def test_calibrate_rejects_a_firm_radius_bound_beyond_the_geometric_identificati
         calibrate(SMALL, bounds=too_wide, n_lhs_points=2, empirical=empirical)
 
 
+_TINY_WEIGHT_SEEDS = (
+    2001,
+    2002,
+)  # a real but tiny weight-seed set, for cheap full-calibrate() tests
+
+
 def test_calibrate_accepts_a_firm_radius_bound_at_exactly_the_geometric_limit():
     at_limit = dict(DEFAULT_BOUNDS, firm_radius=(1.0, 2 * SMALL.cbd_radius))
     empirical = EmpiricalMoments(
         values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
     )
-    calibrate(SMALL, bounds=at_limit, n_lhs_points=2, empirical=empirical)  # must not raise
+    calibrate(  # must not raise
+        SMALL,
+        bounds=at_limit,
+        n_lhs_points=2,
+        n_restarts=1,
+        weight_seeds=_TINY_WEIGHT_SEEDS,
+        empirical=empirical,
+    )
 
 
 def test_calibrate_skips_the_geometric_check_when_belief_multiplier_is_not_one():
@@ -161,7 +235,14 @@ def test_calibrate_skips_the_geometric_check_when_belief_multiplier_is_not_one()
     empirical = EmpiricalMoments(
         values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
     )
-    calibrate(biased, bounds=too_wide, n_lhs_points=2, empirical=empirical)  # must not raise
+    calibrate(  # must not raise
+        biased,
+        bounds=too_wide,
+        n_lhs_points=2,
+        n_restarts=1,
+        weight_seeds=_TINY_WEIGHT_SEEDS,
+        empirical=empirical,
+    )
 
 
 def test_calibration_result_flags_a_parameter_landing_within_one_percent_of_its_bound():
@@ -172,8 +253,57 @@ def test_calibration_result_flags_a_parameter_landing_within_one_percent_of_its_
     )
     # A tiny box pinned right at firm_kappa's upper edge forces Nelder-Mead to land there.
     pinned_bounds = dict(DEFAULT_BOUNDS, firm_kappa=(1.99, 2.0))
-    result = calibrate(SMALL, bounds=pinned_bounds, n_lhs_points=2, empirical=empirical)
+    result = calibrate(
+        SMALL,
+        bounds=pinned_bounds,
+        n_lhs_points=2,
+        n_restarts=1,
+        weight_seeds=_TINY_WEIGHT_SEEDS,
+        empirical=empirical,
+    )
     assert "firm_kappa" in result.boundary_adjacent_params
+
+
+def test_calibrate_raises_when_no_restart_converges(monkeypatch):
+    """A calibration where every Nelder-Mead restart fails to converge must raise, not return a
+    parameter vector that was never actually validated as an optimum."""
+
+    class _FakeFailedResult:
+        success = False
+        status = 2
+        message = "forced failure for test"
+        fun = 999.0
+        x = np.array([0.02, 0.6, 2.0, 0.8])
+        nfev = 1
+
+    monkeypatch.setattr("src.calibrate.minimize", lambda *a, **k: _FakeFailedResult())
+    empirical = EmpiricalMoments(
+        values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
+    )
+    with pytest.raises(RuntimeError, match="no Nelder-Mead restart converged"):
+        calibrate(
+            SMALL,
+            bounds=DEFAULT_BOUNDS,
+            n_lhs_points=3,
+            n_restarts=2,
+            weight_seeds=_TINY_WEIGHT_SEEDS,
+            empirical=empirical,
+        )
+
+
+def test_calibrate_attempts_at_least_two_restarts_when_requested():
+    empirical = EmpiricalMoments(
+        values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
+    )
+    result = calibrate(
+        SMALL,
+        bounds=DEFAULT_BOUNDS,
+        n_lhs_points=5,
+        n_restarts=2,
+        weight_seeds=_TINY_WEIGHT_SEEDS,
+        empirical=empirical,
+    )
+    assert result.n_restarts == 2
 
 
 @pytest.mark.slow
@@ -204,10 +334,14 @@ def test_recovers_a_known_parameter_vector():
         SMALL,
         bounds=tight_bounds,
         n_lhs_points=15,
+        n_restarts=2,  # configurable specifically so this recovery test stays cheap
         calibration_seeds=tuple(range(1, 11)),
         validation_seeds=tuple(range(200, 210)),
+        weight_seeds=tuple(range(2001, 2011)),  # 10 seeds -- enough to estimate S_sim, not 50
         empirical=empirical,
     )
+    assert result.success
+    assert result.n_converged_restarts >= 1
 
     for name in PARAM_NAMES:
         low, high = tight_bounds[name]
