@@ -13,10 +13,19 @@ UCT and is not used here.
 
 Save everything to a folder **outside this repository**, e.g. `../thesis-data/`. Never inside
 `spatial-labour-trap/`. `configs/*.yaml` never points at it -- `Config` is the *simulation's*
-configuration and has no reason to know where microdata lives. Each notebook in
-`notebooks/moments/` instead defines its own `DATA_ROOT` constant in its first code cell,
-pointed at wherever you saved the extracted files -- edit that one line per notebook, nothing
-shared or central to keep in sync.
+configuration and has no reason to know where microdata lives.
+
+Set the `THESIS_DATA_ROOT` environment variable to that folder before running any notebook in
+`notebooks/moments/` that touches microdata (01, 02, 03 -- 04 is literature-only and needs no
+data root):
+
+```powershell
+$env:THESIS_DATA_ROOT = "C:\path\to\wherever\you\saved\the\extracted\files"
+```
+
+Each notebook reads it via `Path(os.environ["THESIS_DATA_ROOT"])` -- one shared variable, not a
+line to edit per notebook, and no absolute path committed to a notebook that's supposed to run
+unmodified on a machine that isn't this thesis's own.
 
 ## What the DataFirst licence permits publishing here
 

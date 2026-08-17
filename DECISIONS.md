@@ -1553,3 +1553,24 @@ Task 8 runs this against the corrected `baseline.yaml`/`frictionless.yaml` pair 
 and the corrected spatial sampling (Task 5) for the first time; whatever it reports there is the
 real SQ1 headline (or the real "Cobb-Douglas doesn't survive" finding), superseding every
 earlier number in this file regardless of this task's own changes.
+
+## Every moment notebook now reads THESIS_DATA_ROOT, not a committed absolute path
+
+The four notebooks under `notebooks/moments/` each hardcoded
+`DATA_ROOT = Path(r"C:\Users\aakas\...")` -- this machine's own path, committed to a
+public repository, and the only thing standing between "clone and run" and "edit four lines
+first" for anyone else who ever tries to reproduce the moments from raw microdata. Replaced with
+`Path(os.environ["THESIS_DATA_ROOT"])` in notebooks 01, 02 and 03 (04 is literature-only and
+touches no microdata, so it needs no data root at all); `data/README.md` now documents setting
+the one shared environment variable before running any of them, rather than editing a line per
+notebook.
+
+**Restarted and re-executed all four notebooks end to end** against the real microdata on this
+machine (`$env:THESIS_DATA_ROOT` set to the same folder the old hardcoded path pointed at), not
+just checked that the refactored code parses. Execution counts are consecutive (1..3, 1..5,
+1..7, 1..2) in every notebook, confirming a clean top-to-bottom run rather than cells executed
+out of order or re-run piecemeal during editing. `data/moments.csv` came back **byte-identical**
+to the version already on disk (confirmed by `git status` showing no diff) -- SHA-256
+`a5a06088f372efca836cc67354ae57fe5887a40fbb6b31a12149e3de7272d32f` -- which is itself a real
+reproducibility check: the same four notebooks, run fresh from the same source data, with the
+only change being *how* they locate that data, reproduce every earlier number exactly.
