@@ -34,12 +34,23 @@ from src.calibrate import (
 )
 from src.config import Config
 
-# firm_radius spans its full calibration box (see calibrate.py's DEFAULT_BOUNDS and the
-# geometric identification limit that sets the 4.0 ceiling). The other two bracket their
-# baseline values by roughly a factor of two either way -- wide enough that a moment with any
-# real gradient along them would visibly move, which is the whole point of the diagnostic.
+# firm_radius and firm_kappa span their full calibration boxes (see calibrate.py's
+# DEFAULT_BOUNDS and, for firm_radius, the geometric identification limit that sets its 4.0
+# ceiling). The other two bracket their baseline values by roughly a factor of two either way --
+# wide enough that a moment with any real gradient along them would visibly move, which is the
+# whole point of the diagnostic.
+#
+# firm_kappa was missing from the original diagnostic set, which is a gap, not a deliberate
+# omission: Pissarides (2000)'s free-entry condition (p - w = (r + lambda) * pc / q(theta),
+# cited directly in Firm's own docstring in agents.py) ties expected match duration to market
+# tightness theta = v/u, and firm_kappa is this model's own tightness dial -- it scales
+# decide_vacancies's posting target directly, so it is the parameter most likely, on the
+# model's own free-entry logic, to move long_term_share if anything in the current four can.
+# Added to test that before concluding the moment is unreachable within the current parameter
+# set (see DECISIONS.md, "What actually identifies what, after the corrected campaign").
 DEFAULT_AXES: dict[str, tuple[float, ...]] = {
     "firm_radius": (1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0),
+    "firm_kappa": (0.2, 0.5, 0.8, 1.1, 1.4, 1.7, 2.0),
     "separation_rate": (0.015, 0.0296, 0.045, 0.06),
     "household_inflow": (0.004, 0.008, 0.016, 0.032),
 }
