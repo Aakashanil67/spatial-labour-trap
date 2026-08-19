@@ -1,6 +1,6 @@
 {
   "fingerprint": {
-    "code_commit": "5093c4f1265375fd88ad6cc712c3bbca2dad0296",
+    "code_commit": "6f68fd8ba93d3386e78915e3334d03c53fdb9383",
     "moments_csv_sha256": "a5a06088f372efca836cc67354ae57fe5887a40fbb6b31a12149e3de7272d32f",
     "config_path": "configs/baseline.yaml",
     "config_canonical_json": "{\"belief_multiplier\":1.0,\"burn_in_steps\":50,\"cbd_radius\":2.0,\"discount_rate\":0.001332,\"firm_kappa\":0.9,\"firm_posting_cost\":0.1,\"firm_productivity\":1.2,\"firm_radius\":2.5,\"grid_size\":40,\"household_inflow\":0.008,\"initial_capital_spread\":0.5,\"initial_search_capital\":0.6,\"max_trips_per_step\":3,\"n_agents\":500,\"n_distance_bands\":4,\"n_firms\":5,\"n_steps\":150,\"n_townships\":4,\"n_vacancies\":15,\"reentry_threshold\":0.035,\"rho_A\":0.849,\"search_cost_per_trip\":0.02,\"seed\":42,\"separation_rate\":0.0296,\"shuffled_activation\":true,\"sigma_A\":0.0057,\"township_distance_max\":20.0,\"township_distance_min\":8.0,\"township_spread\":2.0,\"trace_agent_ids\":[],\"transport_cost_rate\":0.004}",
@@ -75,29 +75,27 @@
     ]
   },
   "params": {
-    "search_cost_per_trip": 0.005001065602859475,
-    "initial_search_capital": 1.4775053491636934,
-    "firm_radius": 3.0416177055004265,
-    "firm_kappa": 0.38812599212466314
+    "search_cost_per_trip": 0.04561747397519959,
+    "initial_search_capital": 0.4341104338920656,
+    "firm_radius": 1.7560704490115084,
+    "firm_kappa": 0.4144658426469314
   },
   "preliminary_params": {
-    "search_cost_per_trip": 0.005004727982016184,
-    "initial_search_capital": 1.1610386985215615,
-    "firm_radius": 3.8088905864218754,
-    "firm_kappa": 1.2489404713979946
+    "search_cost_per_trip": 0.005132425179264597,
+    "initial_search_capital": 1.4835651346410228,
+    "firm_radius": 1.1875875301601582,
+    "firm_kappa": 0.41127063906831485
   },
-  "loss_at_optimum": 21522.26188520058,
-  "lhs_best_loss": 21789.693097021118,
+  "loss_at_optimum": 3873.0361617451285,
+  "lhs_best_loss": 3931.433939604158,
   "n_lhs_points": 200,
-  "n_nelder_mead_evaluations": 1051,
+  "n_nelder_mead_evaluations": 905,
   "success": true,
   "message": "Optimization terminated successfully.",
-  "selected_restart_index": 1,
+  "selected_restart_index": 0,
   "n_restarts": 3,
   "n_converged_restarts": 3,
-  "boundary_adjacent_params": [
-    "search_cost_per_trip"
-  ],
+  "boundary_adjacent_params": [],
   "weights": {
     "moment_keys": [
       "distance_gradient_slope",
@@ -107,35 +105,35 @@
     ],
     "weight_matrix": [
       [
-        0.5000938677685486,
-        1.01138883256318,
-        -0.653442162874681,
-        0.0
+        0.4973898097091899,
+        6.973531819726085,
+        -1.3928006928237073,
+        -2.3926657581884574
       ],
       [
-        1.0113888325631486,
-        125975.90196114888,
-        -14474.334077736874,
-        0.0
+        6.973531819726063,
+        64230.39997676562,
+        -5213.234236837494,
+        -25242.94974094553
       ],
       [
-        -0.65344216287475,
-        -14474.334077736868,
-        2497.3820423293987,
-        0.0
+        -1.392800692823794,
+        -5213.234236837509,
+        1343.6550704052995,
+        1477.1219666072507
       ],
       [
-        0.0,
-        0.0,
-        0.0,
-        34293.55281207133
+        -2.3926657581884614,
+        -25242.94974094553,
+        1477.1219666072445,
+        17010.934338242892
       ]
     ],
     "estimated_at_params": {
-      "search_cost_per_trip": 0.005004727982016184,
-      "initial_search_capital": 1.1610386985215615,
-      "firm_radius": 3.8088905864218754,
-      "firm_kappa": 1.2489404713979946
+      "search_cost_per_trip": 0.005132425179264597,
+      "initial_search_capital": 1.4835651346410228,
+      "firm_radius": 1.1875875301601582,
+      "firm_kappa": 0.41127063906831485
     },
     "weight_seeds": [
       2001,

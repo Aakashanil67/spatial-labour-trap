@@ -1,6 +1,6 @@
 {
   "fingerprint": {
-    "code_commit": "10905561e81b38ba47678c23ac091b9b3bea2dad",
+    "code_commit": "6f68fd8ba93d3386e78915e3334d03c53fdb9383",
     "moments_csv_sha256": "a5a06088f372efca836cc67354ae57fe5887a40fbb6b31a12149e3de7272d32f",
     "config_path": "configs/baseline.yaml",
     "config_canonical_json": "{\"belief_multiplier\":1.0,\"burn_in_steps\":50,\"cbd_radius\":2.0,\"discount_rate\":0.001332,\"firm_kappa\":0.9,\"firm_posting_cost\":0.1,\"firm_productivity\":1.2,\"firm_radius\":2.5,\"grid_size\":40,\"household_inflow\":0.008,\"initial_capital_spread\":0.5,\"initial_search_capital\":0.6,\"max_trips_per_step\":3,\"n_agents\":500,\"n_distance_bands\":4,\"n_firms\":5,\"n_steps\":150,\"n_townships\":4,\"n_vacancies\":15,\"reentry_threshold\":0.035,\"rho_A\":0.849,\"search_cost_per_trip\":0.02,\"seed\":42,\"separation_rate\":0.0296,\"shuffled_activation\":true,\"sigma_A\":0.0057,\"township_distance_max\":20.0,\"township_distance_min\":8.0,\"township_spread\":2.0,\"trace_agent_ids\":[],\"transport_cost_rate\":0.004}",
@@ -12,13 +12,13 @@
       5
     ],
     "centre_from": "results/published/calibration_result.json",
-    "centre_code_commit": "5093c4f1265375fd88ad6cc712c3bbca2dad0296"
+    "centre_code_commit": "6f68fd8ba93d3386e78915e3334d03c53fdb9383"
   },
   "centre_params": {
-    "search_cost_per_trip": 0.005001065602859475,
-    "initial_search_capital": 1.4775053491636934,
-    "firm_radius": 3.0416177055004265,
-    "firm_kappa": 0.38812599212466314
+    "search_cost_per_trip": 0.04561747397519959,
+    "initial_search_capital": 0.4341104338920656,
+    "firm_radius": 1.7560704490115084,
+    "firm_kappa": 0.4144658426469314
   },
   "empirical_targets": {
     "distance_gradient_slope": -5.0333,
@@ -31,64 +31,64 @@
       {
         "value": 1.0,
         "moments": {
-          "distance_gradient_slope": -2.0098682634730536,
-          "discouraged_share": 0.29594800000000004,
-          "transport_budget_share": 1.1210996741080108,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.1991856287425149,
+          "discouraged_share": 0.42934400000000006,
+          "transport_budget_share": 2.032144978093509,
+          "long_term_share": 0.7789855161138936
         }
       },
       {
         "value": 1.5,
         "moments": {
-          "distance_gradient_slope": -1.8769341317365267,
-          "discouraged_share": 0.267616,
-          "transport_budget_share": 1.123444397506909,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.2797604790419161,
+          "discouraged_share": 0.35406400000000005,
+          "transport_budget_share": 2.032246006170145,
+          "long_term_share": 0.6929604068988541
         }
       },
       {
         "value": 2.0,
         "moments": {
-          "distance_gradient_slope": -1.9709221556886227,
-          "discouraged_share": 0.26209199999999994,
-          "transport_budget_share": 1.1313443721915575,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -0.7879281437125748,
+          "discouraged_share": 0.31111199999999994,
+          "transport_budget_share": 2.039354996613126,
+          "long_term_share": 0.6567069438322803
         }
       },
       {
         "value": 2.5,
         "moments": {
-          "distance_gradient_slope": -1.9938203592814367,
-          "discouraged_share": 0.240636,
-          "transport_budget_share": 1.1229636240233258,
-          "long_term_share": 5.4054054054054054e-05
+          "distance_gradient_slope": -1.607425149700599,
+          "discouraged_share": 0.300056,
+          "transport_budget_share": 2.0299861952808174,
+          "long_term_share": 0.6316926798563258
         }
       },
       {
         "value": 3.0,
         "moments": {
-          "distance_gradient_slope": -2.0023952095808384,
-          "discouraged_share": 0.26676,
-          "transport_budget_share": 1.1235148300143973,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -0.8878083832335328,
+          "discouraged_share": 0.296048,
+          "transport_budget_share": 2.03382617631845,
+          "long_term_share": 0.6189959656762375
         }
       },
       {
         "value": 3.5,
         "moments": {
-          "distance_gradient_slope": -2.582275449101796,
-          "discouraged_share": 0.251248,
-          "transport_budget_share": 1.124104470169948,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -0.9851017964071855,
+          "discouraged_share": 0.289624,
+          "transport_budget_share": 2.0337853834309807,
+          "long_term_share": 0.6181141342623366
         }
       },
       {
         "value": 4.0,
         "moments": {
-          "distance_gradient_slope": -1.818299401197605,
-          "discouraged_share": 0.24238800000000005,
-          "transport_budget_share": 1.12487336966529,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -0.91362874251497,
+          "discouraged_share": 0.290128,
+          "transport_budget_share": 2.034105833647443,
+          "long_term_share": 0.6063422462541422
         }
       }
     ],
@@ -96,64 +96,64 @@
       {
         "value": 0.2,
         "moments": {
-          "distance_gradient_slope": -2.3510419161676643,
-          "discouraged_share": 0.5996600000000001,
-          "transport_budget_share": 1.0949913668582503,
-          "long_term_share": 0.005289193808575813
+          "distance_gradient_slope": -1.2611736526946107,
+          "discouraged_share": 0.645092,
+          "transport_budget_share": 2.018453874464016,
+          "long_term_share": 0.9226719090595703
         }
       },
       {
         "value": 0.5,
         "moments": {
-          "distance_gradient_slope": -1.583185628742515,
-          "discouraged_share": 0.153328,
-          "transport_budget_share": 1.1290547921367955,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.010682634730539,
+          "discouraged_share": 0.30641599999999997,
+          "transport_budget_share": 2.031275650857817,
+          "long_term_share": 0.6215752437506309
         }
       },
       {
         "value": 0.8,
         "moments": {
-          "distance_gradient_slope": -1.2956646706586827,
-          "discouraged_share": 0.105656,
-          "transport_budget_share": 1.1195413780575842,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.6857485029940118,
+          "discouraged_share": 0.27804,
+          "transport_budget_share": 2.0361361733672143,
+          "long_term_share": 0.5727575464782895
         }
       },
       {
         "value": 1.1,
         "moments": {
-          "distance_gradient_slope": -1.662323353293413,
-          "discouraged_share": 0.09434800000000002,
-          "transport_budget_share": 1.1208926242634731,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -0.984766467065868,
+          "discouraged_share": 0.273292,
+          "transport_budget_share": 2.0323157823133955,
+          "long_term_share": 0.5587973894179138
         }
       },
       {
         "value": 1.4,
         "moments": {
-          "distance_gradient_slope": -1.242443113772455,
-          "discouraged_share": 0.08848400000000001,
-          "transport_budget_share": 1.1138218745429402,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -0.7730299401197605,
+          "discouraged_share": 0.269184,
+          "transport_budget_share": 2.0329577001680343,
+          "long_term_share": 0.5439424294278582
         }
       },
       {
         "value": 1.7,
         "moments": {
-          "distance_gradient_slope": -1.272,
-          "discouraged_share": 0.07965599999999999,
-          "transport_budget_share": 1.1222636071776877,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -0.9546826347305387,
+          "discouraged_share": 0.267548,
+          "transport_budget_share": 2.0272107451949464,
+          "long_term_share": 0.5435633250235653
         }
       },
       {
         "value": 2.0,
         "moments": {
-          "distance_gradient_slope": -1.4940359281437126,
-          "discouraged_share": 0.07828399999999999,
-          "transport_budget_share": 1.1189548059367351,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.0294131736526946,
+          "discouraged_share": 0.26624,
+          "transport_budget_share": 2.0325995988918635,
+          "long_term_share": 0.5418207241416994
         }
       }
     ],
@@ -161,64 +161,64 @@
       {
         "value": 0.4,
         "moments": {
-          "distance_gradient_slope": -1.6534131736526945,
-          "discouraged_share": 0.21656399999999998,
-          "transport_budget_share": 1.124587239290107,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.4771736526946107,
+          "discouraged_share": 0.30999999999999994,
+          "transport_budget_share": 2.0357109925957904,
+          "long_term_share": 0.6361434135014414
         }
       },
       {
         "value": 0.6,
         "moments": {
-          "distance_gradient_slope": -2.0926946107784428,
-          "discouraged_share": 0.24955599999999997,
-          "transport_budget_share": 1.127765503691815,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -0.9357604790419162,
+          "discouraged_share": 0.31085599999999997,
+          "transport_budget_share": 2.0338668990213233,
+          "long_term_share": 0.6306452046830692
         }
       },
       {
         "value": 0.8,
         "moments": {
-          "distance_gradient_slope": -2.1863473053892215,
-          "discouraged_share": 0.24279199999999998,
-          "transport_budget_share": 1.1272868205421578,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -0.6911616766467066,
+          "discouraged_share": 0.32499199999999995,
+          "transport_budget_share": 2.033620998113256,
+          "long_term_share": 0.649989313879213
         }
       },
       {
         "value": 1.0,
         "moments": {
-          "distance_gradient_slope": -2.2629940119760477,
-          "discouraged_share": 0.26804400000000006,
-          "transport_budget_share": 1.1198852594059885,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.2045508982035928,
+          "discouraged_share": 0.327788,
+          "transport_budget_share": 2.033431029115368,
+          "long_term_share": 0.6748061067883723
         }
       },
       {
         "value": 1.3,
         "moments": {
-          "distance_gradient_slope": -2.3278562874251496,
-          "discouraged_share": 0.257548,
-          "transport_budget_share": 1.1293284597186384,
-          "long_term_share": 0.00012369159080122537
+          "distance_gradient_slope": -0.8746826347305389,
+          "discouraged_share": 0.347992,
+          "transport_budget_share": 2.036331437380292,
+          "long_term_share": 0.6990731876329501
         }
       },
       {
         "value": 1.6,
         "moments": {
-          "distance_gradient_slope": -1.8675449101796406,
-          "discouraged_share": 0.23572800000000002,
-          "transport_budget_share": 1.1261668435492058,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.1475449101796407,
+          "discouraged_share": 0.38910799999999995,
+          "transport_budget_share": 2.0320179945329198,
+          "long_term_share": 0.7468602848903986
         }
       },
       {
         "value": 2.0,
         "moments": {
-          "distance_gradient_slope": -1.9606706586826346,
-          "discouraged_share": 0.273136,
-          "transport_budget_share": 1.1209924888053713,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.2323353293413173,
+          "discouraged_share": 0.46335999999999994,
+          "transport_budget_share": 2.0239787715110173,
+          "long_term_share": 0.8167980014015042
         }
       }
     ],
@@ -226,37 +226,37 @@
       {
         "value": 0.015,
         "moments": {
-          "distance_gradient_slope": -0.5595209580838324,
-          "discouraged_share": 0.05081600000000001,
-          "transport_budget_share": 1.1327239252262182,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -0.8924071856287424,
+          "discouraged_share": 0.162904,
+          "transport_budget_share": 2.0361153094997944,
+          "long_term_share": 0.5581151626151627
         }
       },
       {
         "value": 0.0296,
         "moments": {
-          "distance_gradient_slope": -2.2629940119760477,
-          "discouraged_share": 0.26804400000000006,
-          "transport_budget_share": 1.1198852594059885,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.2045508982035928,
+          "discouraged_share": 0.327788,
+          "transport_budget_share": 2.033431029115368,
+          "long_term_share": 0.6748061067883723
         }
       },
       {
         "value": 0.045,
         "moments": {
-          "distance_gradient_slope": -2.357844311377246,
-          "discouraged_share": 0.5128440000000001,
-          "transport_budget_share": 1.101806393241692,
-          "long_term_share": 0.0003003644912973678
+          "distance_gradient_slope": -1.1272335329341319,
+          "discouraged_share": 0.552324,
+          "transport_budget_share": 2.018593073324132,
+          "long_term_share": 0.8172523996448401
         }
       },
       {
         "value": 0.06,
         "moments": {
-          "distance_gradient_slope": -1.3413173652694614,
-          "discouraged_share": 0.72278,
-          "transport_budget_share": 1.0848556588015685,
-          "long_term_share": 0.005559016283902985
+          "distance_gradient_slope": -0.45753293413173657,
+          "discouraged_share": 0.7772920000000001,
+          "transport_budget_share": 2.0102431895164043,
+          "long_term_share": 0.927242759228044
         }
       }
     ],
@@ -264,37 +264,37 @@
       {
         "value": 0.004,
         "moments": {
-          "distance_gradient_slope": -2.450634730538922,
-          "discouraged_share": 0.290692,
-          "transport_budget_share": 1.1208872027271006,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.5177005988023953,
+          "discouraged_share": 0.469824,
+          "transport_budget_share": 2.025501166129655,
+          "long_term_share": 0.9845292163718634
         }
       },
       {
         "value": 0.008,
         "moments": {
-          "distance_gradient_slope": -2.2629940119760477,
-          "discouraged_share": 0.26804400000000006,
-          "transport_budget_share": 1.1198852594059885,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.2045508982035928,
+          "discouraged_share": 0.327788,
+          "transport_budget_share": 2.033431029115368,
+          "long_term_share": 0.6748061067883723
         }
       },
       {
         "value": 0.016,
         "moments": {
-          "distance_gradient_slope": -1.04637125748503,
-          "discouraged_share": 0.183392,
-          "transport_budget_share": 1.1372290888583874,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -1.3884071856287425,
+          "discouraged_share": 0.21883199999999997,
+          "transport_budget_share": 2.041222290660009,
+          "long_term_share": 0.32948402924735454
         }
       },
       {
         "value": 0.032,
         "moments": {
-          "distance_gradient_slope": -1.3781077844311378,
-          "discouraged_share": 0.17746,
-          "transport_budget_share": 1.1451105034815352,
-          "long_term_share": 0.0
+          "distance_gradient_slope": -0.4990658682634731,
+          "discouraged_share": 0.15575999999999998,
+          "transport_budget_share": 2.0477986041796252,
+          "long_term_share": 0.2151040363798876
         }
       }
     ]

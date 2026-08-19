@@ -1827,6 +1827,13 @@ any direction.
 
 ## What actually identifies what, after the corrected campaign
 
+> **Superseded, 19 August 2026.** Every number in this section describes the wrong-clock
+> `long_term_share` (measured off the searching-state spell rather than months since last
+> employment) and the campaign fitted to it. The 95.88 per cent share, the "exactly flat at 12
+> of 15 swept points" claim and the two-live-moments conclusion do not survive the fix -- see
+> "long_term_share was measuring the wrong clock" and "The campaign under the corrected clock"
+> below. Kept for the record of how the wrong-clock evidence was read at the time.
+
 The identification walkthrough written in Week 4 is superseded (see the banner on that section).
 This is the current position, derived from the published weight matrix and response surface
 rather than from the model's structure alone.
@@ -1901,3 +1908,61 @@ identification claim ("long_term_share carries 95.88 per cent of the objective b
 flat") is stale until it is: those numbers described the wrong-clock moment. One caution for
 the write-up: the QLFS metadata should be cited directly for `Long_term_unempl`'s derivation
 rather than this file's reading of the variable label.
+
+## The campaign under the corrected clock
+
+Re-running the full campaign (200 LHS points, three restarts, both weight stages, 50
+validation seeds) with `long_term_share` measured off `months_jobless` rather than
+`months_in_state` produced a different calibration, and a materially different identification
+position. The sections above titled "What actually identifies what, after the corrected
+campaign" and the campaign table under the M9 divisor entry describe the wrong-clock moment
+and are superseded by this section.
+
+| | wrong-clock optimum | corrected-clock optimum |
+|---|---|---|
+| `search_cost_per_trip` | 0.005001 (on its 0.005 floor) | 0.045617 (interior) |
+| `initial_search_capital` | 1.477505 | 0.434110 |
+| `firm_radius` | 3.041618 | 1.756070 |
+| `firm_kappa` | 0.388126 | 0.414466 |
+| boundary-adjacent | c on its floor | **none** |
+| restarts converged | 3/3 | 3/3 |
+
+`search_cost_per_trip` leaving the floor it sat on through every previous campaign is the
+economically telling change. Under the wrong clock, cheap search was the only way to keep any
+continuous spell alive; under the correct one, a *higher* search cost drains capital faster,
+drives the discouragement cycling, and it is exactly that churn that accumulates jobless
+duration. The optimiser found the mechanism the moment was always supposed to reward.
+
+**Fit at the corrected optimum** (validation seeds, n=50): `long_term_share` 0.6618 against
+0.7744 -- 85 per cent of a target that was previously unreachable by construction.
+`discouraged_share` 0.3258 against 0.1343 (2.4x over). `transport_budget_share` 2.0204 against
+0.1058 (19x over, worse than the wrong-clock optimum's 1.12 -- the optimiser now deliberately
+trades it away for the two duration-linked moments). `distance_gradient_slope` -1.2768 against
+-5.0333, within 2.7 empirical standard errors.
+
+**Identification, recomputed from the published weight matrix and validation deviations**:
+`transport_budget_share` carries 65.11 per cent of the objective, `discouraged_share` 24.08,
+`long_term_share` 10.73, `distance_gradient_slope` 0.07. Three moments now do real work where
+the wrong-clock campaign had two-at-best -- and `long_term_share` is no longer the pathological
+case of weight without gradient, since it moved from exactly 0.0000 to 0.6618. The moment set's
+one persistent dead entry is `distance_gradient_slope`, whose weight sits 5.11 orders of
+magnitude below the largest -- the same under-identification already flagged in the README, not
+resolved by this fix and not caused by it.
+
+**What is still wrong, stated plainly**: `transport_budget_share` at 19 times its target is now
+the dominant misfit, and `discouraged_share` at 2.4 times its target is the second. The model
+buys its long-term-unemployment fit with more discouragement and far more transport spending
+than the data allow. That is a real trade-off for the supervisor conversation -- but it is a
+conversation about degrees of misfit among four live-ish moments, not about a moment the model
+could not touch at all, which is what the wrong clock made it look like.
+
+**The response surface is alive on every axis.** Regenerated at the corrected optimum, the
+moment that was exactly 0.0000 at 12 of 15 swept points now has real gradient along all five
+diagnostic axes: 0.78 to 0.61 across `firm_radius`, 0.92 to 0.54 across `firm_kappa`, 0.64 to
+0.82 across `belief_multiplier`, 0.56 to 0.93 across `separation_rate`, and 0.98 to 0.22 across
+`household_inflow` -- the steepest of the five, which fits the mechanism: the inflow rate
+governs how long a discouraged agent stays parked before cycling back, and parked time is
+jobless time. The `belief_multiplier` null recorded in the sweep module's own comments was a
+null on the wrong-clock moment and is superseded along with the rest; the sweep results that
+survive unchanged are the ones about `discouraged_share` and `transport_budget_share`, whose
+definitions this fix never touched.

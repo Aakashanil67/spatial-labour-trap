@@ -2,11 +2,12 @@
 initial_search_capital (W0), firm_radius (rho), firm_kappa (kappa) -- against the four moments
 in data/moments.csv (locked commitment 3). Nominally exactly identified -- four parameters, four
 moments, no slack for a formal overidentification test, with the out-of-calibration validation
-against Banerjee and Sequeira's null result as the substitute. **In practice the loss has two
-informative dimensions, not four**: at the published optimum `distance_gradient_slope` carries
-0.02 per cent of the objective, and `long_term_share` carries 95.88 per cent but is exactly flat
-at 12 of 15 swept points, so neither pins the parameter it nominally identifies. See
-DECISIONS.md, "What actually identifies what, after the corrected campaign".
+against Banerjee and Sequeira's null result as the substitute. **In practice the loss has three
+informative dimensions, not four**: at the published optimum `transport_budget_share` carries
+65.11 per cent of the objective, `discouraged_share` 24.08 and `long_term_share` 10.73, while
+`distance_gradient_slope` carries 0.07 per cent with a fitted weight 5.11 orders of magnitude
+below the largest -- the one moment that still pins nothing. See DECISIONS.md, "The campaign
+under the corrected clock".
 
 **The weight matrix is fixed for the whole of one search, not recomputed at each candidate.**
 An earlier version of this module weighted each candidate's deviation by the inverse of (data

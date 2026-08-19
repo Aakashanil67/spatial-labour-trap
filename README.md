@@ -50,21 +50,23 @@ problems spanning the model, the methodology and the public repository itself; e
 fixed and test-covered as of this commit -- see `DECISIONS.md` for the full record, task by
 task.
 
-**The calibration itself does not clear its own no-false-success gate.** The campaign converges
-cleanly on all three restarts, but `search_cost_per_trip` lands on its 0.005 search-box floor,
-and two of the four moments cannot be reached from anywhere in the box. `long_term_share` (the
-share of currently-unemployed agents searching 12+ months) reaches at best 0.0056 against an
-empirical `0.7744` -- 0.72 per cent of target -- and is exactly zero at 12 of the 15 points on
-the published response surface. `transport_budget_share` sits at 1.1121 against an empirical
-`0.1058`, a factor of 10.5, and never approaches it along any axis.
+**The headline `long_term_share` failure turned out to be a measurement bug, now fixed.** The
+simulated moment counted the current continuous searching spell, which resets on every
+discouragement cycle; QLFS's `Long_term_unempl` -- the empirical target -- is derived from time
+since the respondent last worked, which a pause in search does not reset. Measured on the right
+clock, the moment went from exactly 0.0000 to 0.6618 against the empirical `0.7744` (85 per
+cent of target) at the recalibrated optimum, with real gradient along every diagnostic axis,
+and `search_cost_per_trip` left the search-box floor it had been pinned to through every
+earlier campaign -- no parameter is boundary-adjacent any more. See `DECISIONS.md`,
+"long_term_share was measuring the wrong clock".
 
-Diagnosed, not hidden: whenever an agent resumes active search, the match rate relative to the
-small active-searching pool is high enough that spells rarely reach 12 months. The one direction
-that moves `long_term_share` at all is a higher separation rate, and pushing it there overshoots
-`discouraged_share` by 5.4x -- so the moments trade off against each other rather than being
-independently reachable. That is a mechanism question for the supervisor conversation rather than
-a bug; see `DECISIONS.md`, "What actually identifies what, after the corrected campaign", and
-`results/published/` for the unrounded numbers.
+**What still doesn't fit**: `transport_budget_share` simulates at 2.0204 against an empirical
+`0.1058` (a factor of 19, and the optimiser now trades it away deliberately -- it carries 65
+per cent of the remaining objective), and `discouraged_share` sits at 0.3258 against `0.1343`
+(2.4x). The model buys its long-term-unemployment fit with more discouragement and far more
+transport spending than the data allow. That trade-off, and `distance_gradient_slope`'s
+still-negligible weight (0.07 per cent of the objective), are the open calibration questions
+for the supervisor conversation; see `results/published/` for the unrounded numbers.
 
 **One number that is trustworthy right now**: SQ1 (does removing spatial friction change the
 matching function's fitted efficiency `a`?), paired across 20 common seeds under a genuine
@@ -110,15 +112,15 @@ download folder first -- see [`data/README.md`](data/README.md).
 
 ## What's not done
 
-- **A usable calibration.** See "Status" above. Two of the four moments are effectively
-  uninformative, for opposite reasons: `distance_gradient_slope` carries 0.02 per cent of the
-  fitted objective, and `long_term_share` carries 95.88 per cent but is exactly flat at 12 of 15
-  swept points. That leaves two live moments to pin four parameters. Whether a fifth mechanism is
-  warranted is a decision for Aakash and the supervisor, and Week 5 policy work should not
-  proceed on a calibrated model until it is taken.
+- **A calibration that fits all four moments.** See "Status" above. Three of the four moments
+  now do real work (`transport_budget_share` 65.11 per cent of the objective, `discouraged_share`
+  24.08, `long_term_share` 10.73), but the fit trades the first two away to reach the third, and
+  `distance_gradient_slope` still identifies nothing at 0.07 per cent. Whether that trade-off is
+  acceptable, or a mechanism change is warranted, is a decision for Aakash and the supervisor,
+  and Week 5 policy work should not proceed on a calibrated model until it is taken.
 - Week 5 (Banerjee-Sequeira validation, beliefs-vs-scarcity decomposition), Week 7 (policy
   experiments, condition mapping) and Week 8 (robustness, freeze) haven't started.
 - `distance_gradient_slope`'s empirical uncertainty is a three-city cross-sectional spread rather
-  than a formal sampling standard error, and its fitted weight sits 3.70 to 5.40 orders of
+  than a formal sampling standard error, and its fitted weight sits 3.43 to 5.11 orders of
   magnitude below the other three moments -- under-identified by the current moment set, not yet
   resolved (see `DECISIONS.md`).
