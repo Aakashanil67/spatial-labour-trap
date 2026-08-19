@@ -908,6 +908,21 @@ the optimiser itself rather than to a closed-form fit.
 
 ## The identification logic, and where the real weak spots are
 
+> **Superseded, 18 August 2026 -- read this banner before the section.** Both headline claims
+> below are now contradicted by this project's own later results, and every simulated number in
+> the section was produced at `separation_rate=0.0048` (Miyamoto's foreign fallback) against a
+> wrong-signed `distance_gradient_slope` target, under the pre-fix search-position draw and the
+> pre-fix weight matrix. It is kept in place, unedited, as the record of what was believed at
+> commit `7a3b38a`; it is not a current statement of how this model is identified. Specifically:
+> "`firm_radius` identifies `distance_gradient_slope` most directly" is contradicted by that
+> moment's fitted weight of 0.5047 against 157,519.78 / 4,479.72 / 34,293.55 (see "The corrected
+> campaign, run once, fails the no-false-success gate"); "`firm_kappa` identifies
+> `long_term_share` most directly" is contradicted by `long_term_share` simulating at exactly
+> 0.0000 at all fifteen swept points. Every other superseded result in this file carries an
+> in-place label like this one; this section went 700 lines without one, which a Week 4 audit
+> caught. The current identification position is in "What actually identifies what, after the
+> corrected campaign" near the end of this file.
+
 Prompt 4.2 asks for this explained, not just the calibrated numbers handed over.
 
 **`firm_radius` (rho) identifies `distance_gradient_slope` most directly** -- it's the literal
@@ -1483,8 +1498,12 @@ three best distinct LHS points (`n_restarts`, configurable):
    disjoint from `CALIBRATION_SEEDS` 1-15 and `VALIDATION_SEEDS` 1001-1050) and estimate the
    full 4x4 simulation covariance matrix there (`np.cov` over the raw per-seed moment draws,
    not just the four per-moment variances the old code used).
-3. **W1** = `pinv(S_data + S_sim / 50)`. Held fixed for a second, independent search from
-   scratch. This search's result is what `CalibrationResult` reports.
+3. **W1** = `pinv(S_data + S_sim / 15)`. Held fixed for a second, independent search from
+   scratch. This search's result is what `CalibrationResult` reports. The divisor is 15, the
+   number of `CALIBRATION_SEEDS` the loss actually averages over -- **not** 50, the number of
+   `WEIGHT_SEEDS` used to estimate `S_sim`. This line originally read `/ 50` and the code
+   matched it; both were wrong, and the correction is written up below in "M9's
+   simulation-variance term was divided by the wrong seed count".
 
 A ridge (`1e-8 * trace`) is added only if a covariance matrix is rank-deficient, and its exact
 value is stored on the `MSMWeights` rather than hidden inside the inverse call.
@@ -1704,3 +1723,132 @@ question this file's own diagnosis surfaced. No new version tag is cut: `v0.2` r
 recent milestone that has actually passed its own gate, and creating a `v0.3` or `v0.4` for a
 calibration that just failed its own no-false-success gate would misrepresent what's actually
 true, exactly the failure mode this whole remediation exists to fix.
+
+## M9's simulation-variance term was divided by the wrong seed count
+
+A Week 4 audit re-derived the MSM objective from scratch and found an error in the weight matrix
+the remediation itself had just rewritten. `calibrate()` estimated the per-seed simulation
+covariance `Sigma` over the 50 `WEIGHT_SEEDS`, then built `W1 = pinv(S_data + Sigma / 50)`. But
+the loss it weights evaluates its simulated moment as a mean over the 15 `CALIBRATION_SEEDS`, so
+the quantity `W1` has to invert is `S_data + Sigma / 15`. The 50 governs how precisely `Sigma`
+itself is estimated; a larger weight-seed set buys a better estimate of the same `Sigma` and does
+nothing to the sampling variance of the loss's own 15-seed mean. Dividing by 50 understated M9's
+simulation term by a factor of 50/15 = 3.33, leaving the correction running at roughly 30 per
+cent of its intended strength.
+
+**The remediation plan itself specified `S_sim / 50`, and the code followed it faithfully**, so
+this was an error inherited from an instruction rather than a deviation from one. The wrong
+formula was also written into this file and into `calibrate()`'s own docstring, which is the
+worse half of the problem: a Calibration chapter drafted from the prose would have carried the
+error into the thesis. Both are corrected, and the divisor now reads `len(calibration_seeds)`
+with a comment saying why.
+
+**No test constrained it.** Every fast test passed a two-element `_TINY_WEIGHT_SEEDS` and the
+slow recovery test passed ten, so the divisor could have been anything and the suite stayed
+green. `test_simulation_variance_is_divided_by_the_seed_count_the_loss_actually_averages_over`
+now pins it end to end: it runs a small calibration with deliberately different-length seed sets
+(3 calibration, 6 weight), recovers `Sigma` independently, and asserts the recovered
+`pinv(W1) - S_data` equals `Sigma / 3`. Against the old code it failed with a ratio of exactly
+0.5, which is 3/6 -- the bug's own signature.
+
+**The fix moved the answer, which is the argument for having caught it.** Re-running the full
+campaign (200 LHS points, three restarts, both stages, 50 validation seeds) against the corrected
+divisor:
+
+| | old divisor (/50) | corrected (/15) |
+|---|---|---|
+| `search_cost_per_trip` | 0.005000 | 0.005001 (still on its floor) |
+| `initial_search_capital` | 1.002742 | 1.477505 |
+| `firm_radius` | 1.005237 | 3.041618 (off its floor, interior) |
+| `firm_kappa` | 0.552034 | 0.388126 |
+| loss at optimum | 23565.667858 | 21522.261885 |
+| boundary-adjacent | c and `firm_radius` | c only |
+
+`firm_radius` was the parameter the Task 5 geometric fix had just rescued from an unidentified
+flat region; under the wrong divisor it went straight back onto the opposite wall at 1.0052, and
+under the corrected one it sits at 3.0416, comfortably interior to its (1.0, 4.0) box. One of the
+two boundary-adjacent parameters is therefore gone. `search_cost_per_trip` remains pinned at its
+0.005 floor, driven by `transport_budget_share`, whose corrected weight is 2,497.38 rather than
+the 4,479.72 the wrong divisor produced -- so its pull is now 1.79 times weaker and it still
+cannot be satisfied anywhere in the box.
+
+**Fixing the divisor makes the objective's degeneracy worse, and that is worth stating plainly.**
+`long_term_share` simulates with exactly zero variance across seeds, so inverse-variance
+weighting hands it the full data-only weight of 34,293.55 while its gradient stays almost flat.
+Its share of the objective rises from 88.5 per cent under the old divisor to **95.88 per cent**
+under the corrected one. The four-moment MSM objective is in practice a one-moment objective on
+the one moment the model can barely move, while `distance_gradient_slope` -- the thesis's own
+spatial mechanism -- carries 0.02 per cent. That is inverse-variance weighting behaving exactly
+as specified, and it is the strongest single argument that the moment set, rather than the
+optimiser, is what needs the supervisor conversation.
+
+## The response surface had no committed generator
+
+The same audit found that the artefact carrying the headline `long_term_share` finding -- the
+claim that decides whether Week 5 proceeds -- was produced by a throwaway inline script during
+the remediation and committed with no provenance at all. `long_term_share_response_surface.json`
+was a bare dictionary of fifteen keys: no seed list, no commit hash, no config fingerprint, no
+`moments.csv` hash, and nothing in the repository could regenerate it. `calibration_result.json`
+carries all four. Under I4's fresh-clone contract, a committed result that no committed code can
+reproduce is precisely the artefact class the contract exists to catch, and this project shipped
+one while auditing itself for that same failure.
+
+`src/sweeps.py` replaces it. One command regenerates the surface, reading its centre point from
+`calibration_result.json` rather than from a hardcoded parameter vector, so the surface can never
+silently describe a different optimum from the one published beside it:
+
+```
+python -m src.sweeps --config configs/baseline.yaml
+```
+
+The written record now carries the same fingerprint block as the calibration result, plus the
+centre point's own originating commit. Calibrated parameters and fixed config fields go through
+one code path -- an axis value is a `Config` field override either way -- so Week 5's full
+prompt-4.3 sweep extends `DEFAULT_AXES` rather than needing a second module. Six tests cover it,
+including one that pins the fingerprint contents, since the absence of that block is what the
+audit objected to.
+
+**Regenerating at the corrected optimum changed the finding, and the earlier wording was too
+strong.** The previous entry said `long_term_share` "simulates at exactly `0.0000` at every one
+of the fifteen points tried, with no exception." At the corrected optimum that is no longer true:
+it is exactly zero at 12 of 15 points and non-zero at three -- 0.0001 at `firm_radius=2.5`,
+0.0003 at `separation_rate=0.045`, and 0.0056 at `separation_rate=0.06`. The moment therefore has
+a real, if tiny, gradient along the separation rate rather than being identically flat everywhere.
+
+**That correction does not rescue the moment, and the trade-off it reveals is sharper than the
+original claim.** The best `long_term_share` anywhere on the surface is 0.0056 against a target of
+0.7744 -- 0.72 per cent of target, roughly 140 times too small -- and it is reached at
+`separation_rate=0.06`, more than double the QLFS-estimated 0.0296. At that same point
+`discouraged_share` reads 0.7228 against its 0.1343 target, 5.4 times over. The one direction that
+moves `long_term_share` at all destroys the moment that currently fits best: buying 0.72 per cent
+of one target costs a 5.4-fold overshoot on another. `transport_budget_share` stays between
+1.0849 and 1.1451 across all fifteen points against its 0.1058 target, never approaching it from
+any direction.
+
+## What actually identifies what, after the corrected campaign
+
+The identification walkthrough written in Week 4 is superseded (see the banner on that section).
+This is the current position, derived from the published weight matrix and response surface
+rather than from the model's structure alone.
+
+**Two of the four moments identify nothing in practice.** `distance_gradient_slope` carries a
+fitted weight of 0.5001 against 125,975.90, 34,293.55 and 2,497.38 for the other three, and
+supplies 0.02 per cent of the objective; the optimiser has almost no reason to move any parameter
+on its account. `long_term_share` carries a large weight but stays nearly flat -- exactly zero at
+12 of 15 swept points and never above 0.72 per cent of its target -- so it contributes 95.88 per
+cent of the loss while offering almost no gradient to descend. A moment with weight but no
+gradient and a moment with gradient but no weight are both uninformative, for opposite reasons.
+
+**That leaves two live moments to pin four parameters, which is why a parameter sits on a wall.**
+`discouraged_share` (5.70 per cent of the objective) and `transport_budget_share` (11.79 per cent)
+are the only two doing real work. `transport_budget_share` cannot be reached anywhere in the box
+and drives `search_cost_per_trip` onto its 0.005 floor. `initial_search_capital` (1.4775) and
+`firm_kappa` (0.3881) are pinned by `discouraged_share` between them, and `firm_radius` (3.0416)
+is now interior but weakly determined, since the moment nominally identifying it is the one
+carrying 0.02 per cent of the loss.
+
+**So `calibrate.py`'s "exactly identified: four parameters, four moments" is no longer the right
+description of this estimator**, and the module docstring now says so. The parameter count is
+unchanged; the informative dimension of the loss is two rather than four. An examiner asking the
+Week 4 gate question -- which moment pins which parameter -- should be given this answer instead
+of the structural one, because this is the answer the repository's own published numbers support.

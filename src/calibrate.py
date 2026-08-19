@@ -1,8 +1,12 @@
 """Method of simulated moments over the four free parameters -- search_cost_per_trip (c),
 initial_search_capital (W0), firm_radius (rho), firm_kappa (kappa) -- against the four moments
-in data/moments.csv (locked commitment 3). Exactly identified: four parameters, four moments,
-no slack for a formal overidentification test -- the out-of-calibration validation against
-Banerjee and Sequeira's null result is the actual substitute (see DECISIONS.md).
+in data/moments.csv (locked commitment 3). Nominally exactly identified -- four parameters, four
+moments, no slack for a formal overidentification test, with the out-of-calibration validation
+against Banerjee and Sequeira's null result as the substitute. **In practice the loss has two
+informative dimensions, not four**: at the published optimum `distance_gradient_slope` carries
+0.02 per cent of the objective, and `long_term_share` carries 95.88 per cent but is exactly flat
+at 12 of 15 swept points, so neither pins the parameter it nominally identifies. See
+DECISIONS.md, "What actually identifies what, after the corrected campaign".
 
 **The weight matrix is fixed for the whole of one search, not recomputed at each candidate.**
 An earlier version of this module weighted each candidate's deviation by the inverse of (data
@@ -432,8 +436,9 @@ def calibrate(
     (`calibration_seeds`):
 
     1. W0 = pinv(data variance alone). Search under W0 for a preliminary estimate.
-    2. Simulate `weight_seeds` at that preliminary estimate, estimate the simulation
-       covariance there, build W1 = pinv(data variance + simulation covariance / len(weight_seeds)).
+    2. Simulate `weight_seeds` at that preliminary estimate, estimate the per-seed simulation
+       covariance there, and build
+       W1 = pinv(data variance + simulation covariance / len(calibration_seeds)).
     3. Search again, from scratch, under W1 -- the returned CalibrationResult is this final
        search's outcome.
 
@@ -450,10 +455,18 @@ def calibrate(
         base, bounds, empirical, w0, n_lhs_points, calibration_seeds, n_restarts
     )
 
+    # sim_cov is the PER-SEED covariance of the moment vector. What the weight matrix has to
+    # invert is Var(g) for the estimator the loss actually uses, and that estimator is a mean
+    # over `calibration_seeds` -- so the divisor is len(calibration_seeds), NOT len(weight_seeds).
+    # weight_seeds only controls how precisely sim_cov itself is estimated; a larger weight-seed
+    # set buys a better estimate of the same Sigma, it does not shrink the loss's own sampling
+    # variance. Dividing by len(weight_seeds) understated the simulation term by
+    # len(weight_seeds)/len(calibration_seeds) and left M9's correction only partly applied --
+    # see DECISIONS.md, "M9's simulation-variance term was divided by the wrong seed count".
     sim_cov = np.cov(
         _simulate_moment_matrix(base, preliminary.params, weight_seeds), rowvar=False, ddof=1
     )
-    combined_cov = data_cov + sim_cov / len(weight_seeds)
+    combined_cov = data_cov + sim_cov / len(calibration_seeds)
     w1 = _weights_from_covariance(
         combined_cov, estimated_at_params=preliminary.params, weight_seeds=weight_seeds
     )
@@ -481,11 +494,11 @@ def calibrate(
     )
 
 
-def _sha256_file(path: str) -> str:
+def sha256_file(path: str) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def _git_commit_hash() -> str:
+def git_commit_hash() -> str:
     return subprocess.run(
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
     ).stdout.strip()
@@ -506,8 +519,8 @@ def _write_published_outputs(
     out.mkdir(parents=True, exist_ok=True)
 
     fingerprint = {
-        "code_commit": _git_commit_hash(),
-        "moments_csv_sha256": _sha256_file(moments_path),
+        "code_commit": git_commit_hash(),
+        "moments_csv_sha256": sha256_file(moments_path),
         "config_path": config_path,
         "config_canonical_json": base.canonical_json(),
         "calibration_seeds": list(CALIBRATION_SEEDS),

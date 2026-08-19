@@ -19,6 +19,8 @@ from src.calibrate import (
     PARAM_NAMES,
     EmpiricalMoments,
     MSMWeights,
+    _data_covariance,
+    _simulate_moment_matrix,
     calibrate,
     load_empirical_moments,
     msm_loss,
@@ -350,3 +352,41 @@ def test_recovers_a_known_parameter_vector():
             f"{name}: recovered {result.params[name]:.4f}, true {true_params[name]:.4f}, "
             f"bounds span {span:.4f}"
         )
+
+
+def test_simulation_variance_is_divided_by_the_seed_count_the_loss_actually_averages_over():
+    """W1 must invert Var(g) for the estimator the loss ACTUALLY uses. The simulated moment in
+    msm_loss is a mean over `calibration_seeds`, so its sampling covariance is
+    Sigma / len(calibration_seeds). `weight_seeds` only controls how precisely Sigma itself is
+    estimated -- using it as the divisor understates the simulation term by
+    len(weight_seeds) / len(calibration_seeds), leaving M9's correction only partly applied.
+
+    Deliberately uses seed sets of different lengths (3 vs 6) so the two candidate divisors give
+    numerically distinguishable weight matrices -- with equal-length sets this test could not
+    fail. See DECISIONS.md, "M9's simulation-variance term was divided by the wrong seed count".
+    """
+    calibration_seeds = (1, 2, 3)
+    weight_seeds = tuple(range(2001, 2007))
+    empirical = EmpiricalMoments(
+        values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
+    )
+
+    result = calibrate(
+        SMALL,
+        bounds=DEFAULT_BOUNDS,
+        n_lhs_points=3,
+        n_restarts=1,
+        calibration_seeds=calibration_seeds,
+        validation_seeds=(1001, 1002),
+        weight_seeds=weight_seeds,
+        empirical=empirical,
+    )
+
+    sigma = np.cov(
+        _simulate_moment_matrix(SMALL, result.preliminary_params, weight_seeds),
+        rowvar=False,
+        ddof=1,
+    )
+    recovered = np.linalg.pinv(result.weights.weight_matrix) - _data_covariance(empirical)
+
+    np.testing.assert_allclose(recovered, sigma / len(calibration_seeds), rtol=1e-5, atol=1e-10)

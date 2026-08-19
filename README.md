@@ -41,7 +41,8 @@ a common fiscal budget, reported as employment gained per rand.
 
 ## Status
 
-Weeks 1-4 of the build plan are implemented: the spatial model (endogenous firms, AR(1) shock,
+Weeks 1-4 of the build plan are implemented **in code** (the writing deliverables are not: no
+Model or Calibration chapter is drafted yet): the spatial model (endogenous firms, AR(1) shock,
 wealth heterogeneity), all four calibration moments computed from real DataFirst microdata, the
 matching-function fit with a constant-returns test before any efficiency number is trusted, and
 the MSM calibration engine. An independent verification on 17 August 2026 found six real
@@ -49,16 +50,20 @@ problems spanning the model, the methodology and the public repository itself; e
 fixed and test-covered as of this commit -- see `DECISIONS.md` for the full record, task by
 task.
 
-**The calibration itself does not clear its own no-false-success gate.** The corrected campaign
-converged cleanly on all three restarts, but two of the four free parameters landed within 1%
-of their search-box floor, and `long_term_share` (the share of currently-unemployed agents
-searching 12+ months) simulates at exactly `0.0000` against an empirical `0.7744`, across the
-entire tested response surface (`firm_radius`, the separation rate, and the household-inflow
-parameter). Diagnosed, not hidden: whenever an agent resumes active search in this model, the
-match rate relative to the small active-searching pool is high enough that no spell reaches 12
-months, regardless of vacancy scarcity or separation/discouragement timing. That's a real
-mechanism question for the supervisor conversation, not a bug -- see `DECISIONS.md`, "The
-corrected campaign, run once, fails the no-false-success gate...", for the full diagnosis and
+**The calibration itself does not clear its own no-false-success gate.** The campaign converges
+cleanly on all three restarts, but `search_cost_per_trip` lands on its 0.005 search-box floor,
+and two of the four moments cannot be reached from anywhere in the box. `long_term_share` (the
+share of currently-unemployed agents searching 12+ months) reaches at best 0.0056 against an
+empirical `0.7744` -- 0.72 per cent of target -- and is exactly zero at 12 of the 15 points on
+the published response surface. `transport_budget_share` sits at 1.1121 against an empirical
+`0.1058`, a factor of 10.5, and never approaches it along any axis.
+
+Diagnosed, not hidden: whenever an agent resumes active search, the match rate relative to the
+small active-searching pool is high enough that spells rarely reach 12 months. The one direction
+that moves `long_term_share` at all is a higher separation rate, and pushing it there overshoots
+`discouraged_share` by 5.4x -- so the moments trade off against each other rather than being
+independently reachable. That is a mechanism question for the supervisor conversation rather than
+a bug; see `DECISIONS.md`, "What actually identifies what, after the corrected campaign", and
 `results/published/` for the unrounded numbers.
 
 **One number that is trustworthy right now**: SQ1 (does removing spatial friction change the
@@ -105,14 +110,15 @@ download folder first -- see [`data/README.md`](data/README.md).
 
 ## What's not done
 
-- **A usable calibration.** See "Status" above -- `long_term_share` is structurally unreachable
-  in the current four-parameter mapping across every tested region of the response surface; this
-  needs a decision (Aakash and the supervisor) about whether a fifth mechanism is warranted
-  before Week 5 policy work can proceed on a calibrated model, per the verification remediation
-  plan's own completion definition.
+- **A usable calibration.** See "Status" above. Two of the four moments are effectively
+  uninformative, for opposite reasons: `distance_gradient_slope` carries 0.02 per cent of the
+  fitted objective, and `long_term_share` carries 95.88 per cent but is exactly flat at 12 of 15
+  swept points. That leaves two live moments to pin four parameters. Whether a fifth mechanism is
+  warranted is a decision for Aakash and the supervisor, and Week 5 policy work should not
+  proceed on a calibrated model until it is taken.
 - Week 5 (Banerjee-Sequeira validation, beliefs-vs-scarcity decomposition), Week 7 (policy
   experiments, condition mapping) and Week 8 (robustness, freeze) haven't started.
-- `distance_gradient_slope`'s empirical uncertainty is a three-city cross-sectional spread, not
-  a formal sampling standard error, and its fitted weight in the calibration is three to four
-  orders of magnitude below the other three moments -- likely under-identified by the current
-  moment set, not yet resolved (see `DECISIONS.md`).
+- `distance_gradient_slope`'s empirical uncertainty is a three-city cross-sectional spread rather
+  than a formal sampling standard error, and its fitted weight sits 3.70 to 5.40 orders of
+  magnitude below the other three moments -- under-identified by the current moment set, not yet
+  resolved (see `DECISIONS.md`).
