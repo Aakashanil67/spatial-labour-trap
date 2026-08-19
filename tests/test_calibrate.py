@@ -13,12 +13,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import src.runner as runner
 from src.calibrate import (
     DEFAULT_BOUNDS,
     MOMENT_KEYS,
     PARAM_NAMES,
+    WEIGHT_SEEDS,
     EmpiricalMoments,
     MSMWeights,
+    _config_with_params,
     _data_covariance,
     _simulate_moment_matrix,
     calibrate,
@@ -27,7 +30,7 @@ from src.calibrate import (
     quadratic_loss,
     simulate_moments,
 )
-from src.config import Config
+from src.config import CALIBRATION_SEEDS, VALIDATION_SEEDS, Config
 
 SMALL = Config(
     n_agents=100,
@@ -130,18 +133,47 @@ def test_quadratic_loss_matches_the_manual_g_transpose_w_g_computation():
     assert quadratic_loss(deviations, weight_matrix) == pytest.approx(expected)
 
 
+def _clear_moments_cache(config: Config, seeds: tuple[int, ...]) -> None:
+    for seed in seeds:
+        path = runner._CACHE_DIR / f"{runner._cache_key(config, seed)}-moments.json"
+        path.unlink(missing_ok=True)
+
+
 def test_msm_loss_is_deterministic_at_a_fixed_parameter_vector():
-    """D12's actual test: two evaluations of the loss at the same parameter vector, same
-    common-random-number seeds, same fixed weights, return an identical float -- not just a
-    close one."""
+    """D12's actual claim: the loss is a deterministic function of the parameters, not just of
+    the on-disk cache. The two `msm_loss` calls below use the same parameter vector and the same
+    seeds, so without clearing the cache in between, the second call is a cache *hit* -- it
+    would return an identical float even if the underlying model were flaky, because it never
+    touches the model the second time. Clearing the cached moments for these exact (config,
+    seed) pairs between the two calls forces the second call to genuinely re-run CityModel, so
+    equality here tests the model's own seed-determinism, not the cache's self-consistency."""
     empirical = EmpiricalMoments(
         values=dict.fromkeys(MOMENT_KEYS, 0.1), standard_errors=dict.fromkeys(MOMENT_KEYS, 0.05)
     )
     weights = _identity_weights()
     x = np.array([0.02, 0.6, 2.0, 0.8])
-    loss_1 = msm_loss(x, SMALL, empirical, weights, seeds=(1, 2, 3))
-    loss_2 = msm_loss(x, SMALL, empirical, weights, seeds=(1, 2, 3))
+    seeds = (1, 2, 3)
+    params = dict(zip(PARAM_NAMES, x, strict=True))
+    cfg = _config_with_params(SMALL, params)
+
+    loss_1 = msm_loss(x, SMALL, empirical, weights, seeds=seeds)
+    _clear_moments_cache(cfg, seeds)
+    loss_2 = msm_loss(x, SMALL, empirical, weights, seeds=seeds)
     assert loss_1 == loss_2
+
+
+def test_calibration_validation_and_weight_seed_sets_are_pairwise_disjoint():
+    """D12's other half: CALIBRATION_SEEDS fits the parameters, WEIGHT_SEEDS estimates the
+    simulation covariance the fit is weighted by, and VALIDATION_SEEDS reports the fit
+    afterwards. Any overlap would let the reported fit, or the weight matrix, be measured in
+    part on seeds the optimiser was itself fitted to -- previously asserted only in prose
+    (DECISIONS.md), never checked in code."""
+    calibration = set(CALIBRATION_SEEDS)
+    validation = set(VALIDATION_SEEDS)
+    weight = set(WEIGHT_SEEDS)
+    assert calibration & validation == set()
+    assert calibration & weight == set()
+    assert validation & weight == set()
 
 
 def test_weight_matrix_is_identical_across_candidate_evaluations():
