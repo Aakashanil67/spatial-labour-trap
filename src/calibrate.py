@@ -74,8 +74,16 @@ WEIGHT_SEEDS: tuple[int, ...] = tuple(range(2001, 2051))  # 50 seeds
 # found: firm_radius=4.1 and 6.0 produced identical histories at the reported calibrated
 # values. See DECISIONS.md, "The search-position draw oversampled the CBD centre, and it
 # explains the flat firm_radius calibration region."
+# search_cost_per_trip's box is rebased 2026-08-19 to the same wage-unit scale as
+# transport_cost_rate (see configs/baseline.yaml and DECISIONS.md, "The spatial money scale was
+# never rebased into wage units"): Banerjee and Sequeira (2023)'s R12.50 Soweto-CBD return fare
+# converts to 0.002907 wage units via this project's own NHTS median-wage anchor (R4,300). The
+# box brackets that one sourced fare from half to a little over double it, allowing for a
+# flat/minimum-fare component distinct from the distance-scaled part transport_cost_rate now
+# carries. The old (0.005, 0.05) box was set before either side was anchored to data and put
+# search_cost_per_trip's own floor above the empirical target's entire implied trip cost.
 DEFAULT_BOUNDS: dict[str, tuple[float, float]] = {
-    "search_cost_per_trip": (0.005, 0.05),
+    "search_cost_per_trip": (0.0015, 0.006),
     "initial_search_capital": (0.2, 1.5),
     "firm_radius": (1.0, 4.0),
     "firm_kappa": (0.2, 2.0),

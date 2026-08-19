@@ -21,7 +21,7 @@ n_agents: 200
 n_vacancies: 15
 initial_search_capital: 0.6
 initial_capital_spread: 0.5
-search_cost_per_trip: 0.02
+search_cost_per_trip: 0.003 # rescaled 2026-08-19, see baseline.yaml / DECISIONS.md
 separation_rate: 0.0296 # QLFS-panel central estimate, notebook 03 -- see DECISIONS.md
 belief_multiplier: 1.0
 household_inflow: 0.008
@@ -37,7 +37,7 @@ n_townships: 4
 township_distance_min: 8.0
 township_distance_max: 20.0
 township_spread: 2.0
-transport_cost_rate: 0.004
+transport_cost_rate: 0.000145 # rescaled 2026-08-19, see baseline.yaml / DECISIONS.md
 n_distance_bands: 4
 
 n_firms: 5

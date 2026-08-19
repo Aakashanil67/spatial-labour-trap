@@ -32,7 +32,7 @@ def test_frictionless_differs_from_baseline_only_in_transport_cost_rate():
     baseline = _load_raw("baseline.yaml")
     frictionless = _load_raw("frictionless.yaml")
 
-    assert _diff(baseline, frictionless) == {"transport_cost_rate": (0.004, 0.0)}
+    assert _diff(baseline, frictionless) == {"transport_cost_rate": (0.000145, 0.0)}
 
 
 def test_frictionless_and_baseline_share_the_same_separation_rate():

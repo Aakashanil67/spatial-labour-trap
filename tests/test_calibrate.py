@@ -346,7 +346,9 @@ def test_recovers_a_known_parameter_vector():
     them back in as the calibration target, and confirm the LHS+Nelder-Mead engine finds its
     way back to something close to the vector that generated them -- not just that it runs."""
     true_params = {
-        "search_cost_per_trip": 0.025,
+        "search_cost_per_trip": 0.003,  # rescaled 2026-08-19 to the wage-unit anchor -- see
+        # configs/baseline.yaml and DECISIONS.md, "The spatial money scale was never rebased
+        # into wage units"
         "initial_search_capital": 0.7,
         "firm_radius": 2.2,
         "firm_kappa": 0.9,
@@ -359,7 +361,7 @@ def test_recovers_a_known_parameter_vector():
     )
 
     tight_bounds = {
-        "search_cost_per_trip": (0.015, 0.035),
+        "search_cost_per_trip": (0.002, 0.0045),
         "initial_search_capital": (0.4, 1.0),
         "firm_radius": (1.5, 3.0),
         "firm_kappa": (0.5, 1.3),

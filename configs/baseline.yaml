@@ -26,7 +26,9 @@ n_agents: 500
 n_vacancies: 15 # only used to seed each firm's initial vacancy count; ignored after step 1
 initial_search_capital: 0.6 # W0. Mean of the draw -- see initial_capital_spread below
 initial_capital_spread: 0.5 # coefficient of variation, lognormal -- prompt 3.1
-search_cost_per_trip: 0.02 # c -- flat/base component, see transport_cost_rate
+search_cost_per_trip: 0.003 # c -- flat/base component; anchored to Banerjee and Sequeira
+# (2023)'s ZAR 12.50 Soweto-CBD return fare in wage units, see transport_cost_rate below and
+# DECISIONS.md, "The spatial money scale was never rebased into wage units"
 separation_rate: 0.0296 # lambda, monthly -- QLFS-panel central estimate, notebook 03; see DECISIONS.md
 belief_multiplier: 1.0 # beta = 1.0 is the unbiased baseline
 household_inflow: 0.008 # g
@@ -43,7 +45,17 @@ n_townships: 4
 township_distance_min: 8.0
 township_distance_max: 20.0
 township_spread: 2.0
-transport_cost_rate: 0.004 # rand per grid-unit distance per trip, on top of search_cost_per_trip
+transport_cost_rate: 0.000145 # rand per grid-unit distance per trip, on top of
+# search_cost_per_trip. Rebased 2026-08-19: Banerjee and Sequeira (2023) report ZAR 500 buying
+# 40 return tickets between Soweto and Johannesburg CBD (R12.50/return trip) over a route they
+# describe as "at least 20 km" -- close enough to this config's own township_distance_max=20
+# to read a grid unit as one km directly, with no separate invented mapping constant. Converted
+# to wage units via this project's own NHTS-notebook median monthly wage (R4,300, reproduced
+# directly against the microdata, not assumed): (12.50 / 20) / 4300 = 0.0001454, rounded. The
+# old 0.004 was set when the grid was built and never checked against data -- at the corrected
+# calibration optimum it made one search trip's distance component alone cost 1.01 wage-days
+# against an empirical target of 0.1058. See DECISIONS.md, "The spatial money scale was never
+# rebased into wage units".
 n_distance_bands: 4
 
 # Endogenous firms (M4)

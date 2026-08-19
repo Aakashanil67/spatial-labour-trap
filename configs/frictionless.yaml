@@ -22,7 +22,8 @@ n_agents: 500
 n_vacancies: 15
 initial_search_capital: 0.6
 initial_capital_spread: 0.5
-search_cost_per_trip: 0.02
+search_cost_per_trip: 0.003 # synchronised to baseline.yaml's 2026-08-19 rescale -- see
+# DECISIONS.md, "The spatial money scale was never rebased into wage units"
 separation_rate: 0.0296 # synchronised to baseline.yaml, 2026-08-17 -- see header and DECISIONS.md
 belief_multiplier: 1.0
 household_inflow: 0.008
