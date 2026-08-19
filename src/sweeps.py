@@ -47,10 +47,38 @@ from src.config import Config
 # decide_vacancies's posting target directly, so it is the parameter most likely, on the
 # model's own free-entry logic, to move long_term_share if anything in the current four can.
 # Added to test that before concluding the moment is unreachable within the current parameter
-# set (see DECISIONS.md, "What actually identifies what, after the corrected campaign").
+# set (see DECISIONS.md, "What actually identifies what, after the corrected campaign"). Result:
+# it was the only axis of the three where long_term_share moved off zero at all (0.0053 at its
+# floor, kappa=0.2), but that point also pushed discouraged_share to 4.5x its target -- the same
+# trade-off separation_rate=0.06 already showed. See "firm_kappa has real gradient on
+# long_term_share, but only by trading it against discouraged_share" in DECISIONS.md.
+#
+# belief_multiplier (beta, M6) is not a calibrated MSM parameter -- it has no DEFAULT_BOUNDS
+# entry -- and has never been swept away from 1.0 (unbiased) in any calibration or diagnostic
+# run to date. It is Banerjee and Sequeira (2023)'s actual mechanism: mistargeted search, not a
+# price effect. Unlike the other three axes, it acts on TWO channels at once (agents.py's
+# decide_trips and search_positions): beta < 1 both slows capital burn (delaying the hard
+# discouraged exit) and shrinks the ticket-side search disk toward the CBD centre away from
+# firms, which could lengthen active-search spells without the discouragement trade-off the
+# other three axes showed, since it doesn't work by suppressing search altogether the way a
+# lower firm_kappa or a higher separation_rate does. The range brackets 1.0 by roughly a factor
+# of two either way, staying clear of decide_trips's documented near-zero freeze failure mode
+# (see decide_trips's own docstring: an initial belief low enough to make every agent's first
+# trip decision zero can leave the whole population permanently stuck at zero trips, since
+# observed_hire_rate_per_trip is never updated on an all-quiet step).
+#
+# Caveat that must travel with any result on this axis: _validate_firm_radius_bound
+# (calibrate.py) explicitly skips its geometric identification check whenever
+# belief_multiplier != 1, by its own documented admission that the argument "no longer applies
+# directly" once beta rescales the ticket-side disk (search_positions: radius = cbd_radius *
+# belief_multiplier * sqrt(U)). This sweep does not re-derive that bound for beta != 1 -- a
+# result here that looks like a real gradient must be checked against whether firm_radius has
+# quietly saturated (every ticket within reach regardless of its value) before it is read as a
+# genuine finding about beta, not an artefact of an unchecked bound.
 DEFAULT_AXES: dict[str, tuple[float, ...]] = {
     "firm_radius": (1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0),
     "firm_kappa": (0.2, 0.5, 0.8, 1.1, 1.4, 1.7, 2.0),
+    "belief_multiplier": (0.4, 0.6, 0.8, 1.0, 1.3, 1.6, 2.0),
     "separation_rate": (0.015, 0.0296, 0.045, 0.06),
     "household_inflow": (0.004, 0.008, 0.016, 0.032),
 }
