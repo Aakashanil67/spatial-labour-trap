@@ -48,7 +48,15 @@ class JobSeeker(Agent):
         self.search_capital = initial_capital
         self.trips_this_step = 0
         self.belief_inactive_this_step = False
-        self.months_in_state = 0  # spell length in the current state, for the duration moment
+        self.months_in_state = 0  # spell length in the current state, for the spell histogram
+        # Time since last employed -- the clock QLFS's Long_term_unempl is actually derived
+        # from. Unlike months_in_state it does NOT reset on a discouraged -> searching cycle:
+        # a respondent who paused searching for two months doesn't reset their reported
+        # duration, and neither does this counter. Resets only on hire. Measuring the
+        # long-term moment off months_in_state instead of this clock hid years of joblessness
+        # behind the model's own discouragement churn -- see DECISIONS.md, "long_term_share
+        # was measuring the wrong clock".
+        self.months_jobless = 0
 
         # Week 2 spatial fields. home_x/home_y default to the CBD centre (0, 0 in the model's
         # own centred coordinate frame), so distance_to_cbd is 0 and cost_per_trip reduces
@@ -141,6 +149,7 @@ class JobSeeker(Agent):
         self.belief_inactive_this_step = self.trips_this_step == 0
         self.search_capital -= self.trips_this_step * self.cost_per_trip
         self.months_in_state += 1
+        self.months_jobless += 1
 
     def search_positions(self) -> list[tuple[float, float]]:
         """One effective search position per trip made this step, for the per-firm
@@ -171,6 +180,7 @@ class JobSeeker(Agent):
         cfg = self.model.config
         self.search_capital += cfg.household_inflow
         self.months_in_state += 1
+        self.months_jobless += 1  # still jobless -- QLFS's clock keeps running through a pause
         if self.search_capital >= cfg.reentry_threshold:
             self.state = SeekerState.SEARCHING
             self.months_in_state = 0
@@ -185,6 +195,7 @@ class JobSeeker(Agent):
     def resolve_hire(self) -> None:
         self.state = SeekerState.EMPLOYED
         self.months_in_state = 0
+        self.months_jobless = 0
 
 
 class Firm(Agent):

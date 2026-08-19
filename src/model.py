@@ -154,7 +154,7 @@ class CityModel(Model):
         for agent in searching:
             row = cell_for(agent)
             row["n_searching"] += 1
-            if agent.months_in_state >= LONG_TERM_THRESHOLD_MONTHS:
+            if agent.months_jobless >= LONG_TERM_THRESHOLD_MONTHS:
                 row["n_long_term"] += 1
         for agent in self._seekers(SeekerState.EMPLOYED):
             cell_for(agent)["n_employed"] += 1
@@ -312,7 +312,14 @@ class CityModel(Model):
         v_t = sum(f.vacancies for f in self.firms) if self.firms else cfg.n_vacancies
         l_t = len(self._seekers(SeekerState.EMPLOYED))
         disc_t = len(self._seekers(SeekerState.DISCOURAGED))
-        n_long_term = sum(1 for a in searching if a.months_in_state >= LONG_TERM_THRESHOLD_MONTHS)
+        # months_jobless, NOT months_in_state: QLFS's Long_term_unempl is derived from time
+        # since the respondent last worked, and a discouragement pause doesn't reset that
+        # clock -- measuring off the searching-state spell hid long-term joblessness behind
+        # the model's own discouragement churn (0.0000 measured against 0.53-0.57 actual at
+        # the same calibrated point). See DECISIONS.md, "long_term_share was measuring the
+        # wrong clock". The completed-spell histogram below stays on months_in_state
+        # deliberately: it is a search-spell object, descriptive only, and correct as is.
+        n_long_term = sum(1 for a in searching if a.months_jobless >= LONG_TERM_THRESHOLD_MONTHS)
         self._collect_cell_row(searching)
 
         # 5. Trip decisions and payment (the intensity margin, M5). transport_spend is what

@@ -104,3 +104,53 @@ def test_activation_order_robustness():
     shuffled_mean_u = shuffled["u"].tail(20).mean()
     fixed_mean_u = fixed["u"].tail(20).mean()
     assert abs(shuffled_mean_u - fixed_mean_u) <= 0.25 * BASE.n_agents
+
+
+def test_jobless_clock_survives_a_discouragement_cycle():
+    """The long-term moment's estimand is QLFS's Long_term_unempl, which StatsSA derives from
+    time since the respondent last worked -- a pause in active search does not reset it. The
+    searching-state spell clock (months_in_state) DOES reset on discouraged -> searching
+    re-entry, which is correct for the spell histogram but wrong for this moment: measuring
+    the moment off months_in_state undercounted long-term joblessness in exact proportion to
+    the model's own discouragement churn. See DECISIONS.md, "long_term_share was measuring the
+    wrong clock"."""
+    from src.agents import SeekerState
+
+    model = CityModel(BASE)
+    agent = next(iter(model._seekers()))
+    agent.months_jobless = 14
+    agent.months_in_state = 3
+    agent.state = SeekerState.SEARCHING
+    agent.search_capital = 1.0
+
+    agent.months_in_state = 0
+    agent.state = SeekerState.DISCOURAGED  # capital exhaustion: spell clock resets...
+    agent.step_discouraged()
+    assert agent.months_jobless == 15  # ...the jobless clock must not
+
+
+def test_jobless_clock_resets_only_on_hire():
+    model = CityModel(BASE)
+    agent = next(iter(model._seekers()))
+    agent.months_jobless = 20
+    agent.resolve_hire()
+    assert agent.months_jobless == 0
+
+
+def test_n_long_term_counts_jobless_duration_not_state_spell():
+    """An agent 15 months jobless whose current searching spell is only 2 months old IS
+    long-term unemployed on QLFS's definition. Before the fix, n_long_term read
+    months_in_state and counted this agent as short-term."""
+    from src.agents import SeekerState
+
+    cfg = replace(BASE, n_steps=1, separation_rate=0.0, n_vacancies=0)
+    model = CityModel(cfg)
+    for agent in model._seekers():
+        agent.state = SeekerState.EMPLOYED  # park everyone else out of the searching pool
+    probe = next(iter(model._seekers()))
+    probe.state = SeekerState.SEARCHING
+    probe.months_jobless = 15
+    probe.months_in_state = 2
+    probe.search_capital = 5.0  # comfortably above one trip, so no exhaustion exit
+    history = model.run()
+    assert history["n_long_term"].iloc[0] == 1

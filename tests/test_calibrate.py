@@ -369,7 +369,15 @@ def test_recovers_a_known_parameter_vector():
         bounds=tight_bounds,
         n_lhs_points=15,
         n_restarts=2,  # configurable specifically so this recovery test stays cheap
-        calibration_seeds=tuple(range(1, 11)),
+        # 30, not the 10 this test originally ran with. The corrected long_term_share (months
+        # since last employed, not the searching-state spell) is a live, noisy moment where the
+        # wrong-clock version was a dead constant zero contributing no simulation noise at all.
+        # At 10 seeds that noise relocated the loss minimum 0.35 of the bounds span away from
+        # the true firm_kappa -- loss(recovered)=1.11 < loss(true)=2.07 under the 10-seed
+        # landscape, so the optimiser was right and the landscape was wrong. At 30 seeds every
+        # parameter recovers within 14 per cent of span. More draws, not a looser tolerance --
+        # McFadden (1989)'s own point about where simulation error goes.
+        calibration_seeds=tuple(range(1, 31)),
         validation_seeds=tuple(range(200, 210)),
         weight_seeds=tuple(range(2001, 2011)),  # 10 seeds -- enough to estimate S_sim, not 50
         empirical=empirical,

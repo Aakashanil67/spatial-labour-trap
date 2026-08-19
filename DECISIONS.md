@@ -1852,3 +1852,52 @@ description of this estimator**, and the module docstring now says so. The param
 unchanged; the informative dimension of the loss is two rather than four. An examiner asking the
 Week 4 gate question -- which moment pins which parameter -- should be given this answer instead
 of the structural one, because this is the answer the repository's own published numbers support.
+
+## long_term_share was measuring the wrong clock
+
+The moment was never structurally unreachable. It was mis-measured, and the mistake sat on the
+simulated side of the moment pair -- the same defect class as the transport_budget_share
+estimand mismatch the remediation fixed: two quantities sharing a name while measuring
+different things.
+
+The empirical 0.7744 comes from QLFS's own `Long_term_unempl` classification, which StatsSA
+derives from how long the respondent has been without work -- time since last employment, or
+since they began seeking for new entrants. A respondent who pauses active search for two
+months and then resumes does not reset their reported duration. The simulated moment instead
+counted `months_in_state`, the length of the current continuous SEARCHING spell, which resets
+to zero on every discouraged-to-searching re-entry. This model produces discouragement churn
+in volume (the MVM alone logs 1,590 re-entries over 120 steps), so agents stayed jobless for
+years while no measured spell ever reached 12 months. The earlier mechanism trace ("no
+searching agent has ever exceeded 4 months in that state") was accurate about the spell clock
+and wrong about what it implied.
+
+**The diagnostic that settled it**: the same model, at the same calibrated point, measured both
+ways across seeds 1-3. The state-spell definition reads 0.0000 on all three; months since last
+employment reads 0.5295, 0.5710 and 0.5440 against the 0.7744 target. Through the full
+`simulate_moments` pipeline at five seeds the corrected moment is 0.4580. Nothing about the
+model's behaviour changed between those two numbers -- only the ruler did.
+
+This also explains the five-axis sweep results in one stroke. The only levers that moved the
+mis-measured moment (`firm_kappa` at its 0.2 floor, `separation_rate` at 0.06) were the ones
+extreme enough to stretch a single continuous searching spell past 12 months, which required
+strangling the market and pushing `discouraged_share` to 4.5-5.4 times its target. Measured
+correctly, the discouragement churn contributes to long-term joblessness instead of hiding it,
+and no such trade-off is needed.
+
+**The fix**: a second per-agent counter, `months_jobless`, incremented in both SEARCHING and
+DISCOURAGED states and reset only on hire. Both `n_long_term` collection sites in model.py now
+read it. The completed-spell histogram stays on `months_in_state` deliberately -- it is a
+search-spell object, descriptive output only, and was correct as it stood. No behavioural code
+path reads the new counter, and the MVM regression is byte-identical (0.0177, 0.0231, 1458,
+1590). Three tests pin the semantics: the jobless clock survives a discouragement cycle, resets
+only on hire, and an agent 15 months jobless with a 2-month-old searching spell counts as
+long-term.
+
+D7 is untouched: the moment set is the same four rows of moments.csv, and the empirical side
+is unchanged. What changed is that the simulated side now measures the estimand the frozen
+target always measured -- the transport_budget_share precedent, not a new moment. The
+calibration campaign has to be re-run under the corrected moment, and every published
+identification claim ("long_term_share carries 95.88 per cent of the objective but is exactly
+flat") is stale until it is: those numbers described the wrong-clock moment. One caution for
+the write-up: the QLFS metadata should be cited directly for `Long_term_unempl`'s derivation
+rather than this file's reading of the variable label.
