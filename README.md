@@ -50,30 +50,42 @@ problems spanning the model, the methodology and the public repository itself; e
 fixed and test-covered as of this commit -- see `DECISIONS.md` for the full record, task by
 task.
 
-**The headline `long_term_share` failure turned out to be a measurement bug, now fixed.** The
-simulated moment counted the current continuous searching spell, which resets on every
-discouragement cycle; QLFS's `Long_term_unempl` -- the empirical target -- is derived from time
-since the respondent last worked, which a pause in search does not reset. Measured on the right
-clock, the moment went from exactly 0.0000 to 0.6618 against the empirical `0.7744` (85 per
-cent of target) at the recalibrated optimum, with real gradient along every diagnostic axis,
-and `search_cost_per_trip` left the search-box floor it had been pinned to through every
-earlier campaign -- no parameter is boundary-adjacent any more. See `DECISIONS.md`,
-"long_term_share was measuring the wrong clock".
+**Two independent bugs were found and fixed in the calibration, in sequence.** First, the
+headline `long_term_share` failure was a measurement bug: the simulated moment counted the
+current continuous searching spell, which resets on every discouragement cycle, while QLFS's
+`Long_term_unempl` -- the empirical target -- is derived from time since the respondent last
+worked, which a pause in search does not reset. Second, once that was fixed, the recalibrated
+`transport_budget_share` missed its target by a factor of 19; decomposing the miss showed
+`transport_cost_rate` (rand per grid-unit distance) had been set when the spatial grid was built
+and never checked against data, making the distance component of a single search trip cost more
+than a full day's wage before the free parameters did anything. Rebased against Banerjee and
+Sequeira (2023)'s R12.50 Soweto-CBD return fare and this project's own NHTS median-wage figure
+(R4,300, reproduced directly from the microdata), `transport_cost_rate` moved from 0.004 to
+0.000145.
 
-**What still doesn't fit**: `transport_budget_share` simulates at 2.0204 against an empirical
-`0.1058` (a factor of 19, and the optimiser now trades it away deliberately -- it carries 65
-per cent of the remaining objective), and `discouraged_share` sits at 0.3258 against `0.1343`
-(2.4x). The model buys its long-term-unemployment fit with more discouragement and far more
-transport spending than the data allow. That trade-off, and `distance_gradient_slope`'s
-still-negligible weight (0.07 per cent of the objective), are the open calibration questions
-for the supervisor conversation; see `results/published/` for the unrounded numbers.
+**The recalibrated fit, at the corrected clock and the rebased cost together**: `discouraged_share`
+0.1329 against empirical `0.1343` (99.0 per cent of target). `long_term_share` 0.7883 against
+`0.7744` (101.8 per cent). `transport_budget_share` 0.0919 against `0.1058` (86.9 per cent) --
+the moment that motivated the second fix. `distance_gradient_slope` -0.8910 against `-5.0333`
+(17.7 per cent) remains the one real misfit, and now carries the largest share of the objective
+(51.4 per cent) precisely because the other three are close to fit and it is not.
+`initial_search_capital` (1.4962) sits within 1 per cent of its 1.5 upper bound -- weakly
+identified, an open item alongside `distance_gradient_slope`'s persistent under-identification.
+One caution found while regenerating the response surface: the calibrated `firm_kappa` (0.2239)
+sits close to a sharp regime boundary in the surface (the market collapses into a near-zero-
+discouragement, near-zero-long-term-share state at `firm_kappa=0.5` and above) -- the fit is
+genuine at this point but perched near a discontinuity, not sitting in a wide basin. See
+`DECISIONS.md`, "The spatial money scale was never rebased into wage units" and "The campaign
+under the rescaled cost, and what it changes".
 
 **One number that is trustworthy right now**: SQ1 (does removing spatial friction change the
 matching function's fitted efficiency `a`?), paired across 20 common seeds under a genuine
 single-field counterfactual (`configs/baseline.yaml` vs. `configs/frictionless.yaml`, differing
 only in `transport_cost_rate`), gated by a real constant-returns hypothesis test rather than
-reported regardless: `delta_a = -0.0104`, 95% CI `[-0.031, 0.013]` -- statistically
-indistinguishable from zero at this population. Reproduce it directly:
+reported regardless: `delta_a = 0.0015`, 95% CI `[-0.024, 0.038]` -- statistically
+indistinguishable from zero at this population, re-run after `transport_cost_rate` was rebased
+(the sign and magnitude of the point estimate moved with the rescale; the conclusion did not).
+Reproduce it directly:
 
 ```bash
 python -m src.sq1 --baseline configs/baseline.yaml --frictionless configs/frictionless.yaml \
@@ -112,15 +124,15 @@ download folder first -- see [`data/README.md`](data/README.md).
 
 ## What's not done
 
-- **A calibration that fits all four moments.** See "Status" above. Three of the four moments
-  now do real work (`transport_budget_share` 65.11 per cent of the objective, `discouraged_share`
-  24.08, `long_term_share` 10.73), but the fit trades the first two away to reach the third, and
-  `distance_gradient_slope` still identifies nothing at 0.07 per cent. Whether that trade-off is
-  acceptable, or a mechanism change is warranted, is a decision for Aakash and the supervisor,
-  and Week 5 policy work should not proceed on a calibrated model until it is taken.
+- **`distance_gradient_slope` still misses badly.** See "Status" above. Three of the four
+  moments now fit within 1 to 13 per cent of target; `distance_gradient_slope` reaches only 17.7
+  per cent of its empirical value and carries 51.4 per cent of the remaining objective as a
+  result. Whether that needs a different moment construction, a different mechanism, or is an
+  honest limitation to report, is a decision for Aakash and the supervisor, and Week 5 policy
+  work should not proceed on a calibrated model until it is taken.
 - Week 5 (Banerjee-Sequeira validation, beliefs-vs-scarcity decomposition), Week 7 (policy
   experiments, condition mapping) and Week 8 (robustness, freeze) haven't started.
 - `distance_gradient_slope`'s empirical uncertainty is a three-city cross-sectional spread rather
-  than a formal sampling standard error, and its fitted weight sits 3.43 to 5.11 orders of
+  than a formal sampling standard error, and its fitted weight sits 4.39 to 4.89 orders of
   magnitude below the other three moments -- under-identified by the current moment set, not yet
   resolved (see `DECISIONS.md`).

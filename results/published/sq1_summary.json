@@ -7,14 +7,14 @@
   "frictionless_binomial_pvalue": 0.6415140775914578,
   "n_valid_paired_crs_comparisons": 16,
   "constrained_headline_reportable": true,
-  "paired_delta_a_constrained_mean": -0.010423009344764811,
+  "paired_delta_a_constrained_mean": 0.00148730377082823,
   "paired_delta_a_constrained_ci_95": [
-    -0.030737177226986837,
-    0.01260166513491702
+    -0.024090287427769627,
+    0.03817671050004166
   ],
-  "paired_delta_a_unconstrained_mean": -0.016763849978625307,
+  "paired_delta_a_unconstrained_mean": -0.02512836551497294,
   "paired_delta_a_unconstrained_ci_95": [
-    -0.23267967123749161,
-    0.18270083982595728
+    -0.24907063894127374,
+    0.23546654330242403
   ]
 }

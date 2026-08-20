@@ -1911,6 +1911,12 @@ rather than this file's reading of the variable label.
 
 ## The campaign under the corrected clock
 
+> **Superseded, 20 August 2026.** This section's optimum and fit numbers were produced under
+> `transport_cost_rate=0.004`, an unanchored value that made the transport-budget target
+> unreachable by construction. See "The spatial money scale was never rebased into wage units"
+> and "The campaign under the rescaled cost, and what it changes" below. Kept for the record of
+> how the corrected-clock evidence was read before the cost scale was also fixed.
+
 Re-running the full campaign (200 LHS points, three restarts, both weight stages, 50
 validation seeds) with `long_term_share` measured off `months_jobless` rather than
 `months_in_state` produced a different calibration, and a materially different identification
@@ -1966,3 +1972,85 @@ jobless time. The `belief_multiplier` null recorded in the sweep module's own co
 null on the wrong-clock moment and is superseded along with the rest; the sweep results that
 survive unchanged are the ones about `discouraged_share` and `transport_budget_share`, whose
 definitions this fix never touched.
+
+## The spatial money scale was never rebased into wage units
+
+`transport_cost_rate` (rand per grid-unit distance per trip) was set to 0.004 when the spatial
+grid was built in Week 2, illustrative rather than calibrated, and never checked against data
+afterwards. At the corrected-clock campaign's optimum it made a search trip's distance component
+alone cost 1.0148 wage-days -- 9.6 times the empirical `transport_budget_share` target of 0.1058
+with `search_cost_per_trip` held at zero. Worse, the target itself implies a total trip cost of
+0.004876 wage-days, below `search_cost_per_trip`'s own old search-box floor of 0.005: no
+combination of the four calibrated parameters could reach the target, because the fixed distance
+cost and the free flat cost's own floor were both already above it before the optimiser did
+anything.
+
+**The anchor, from two sources independent of the target it corrects.** The wage side reruns
+this project's own NHTS-2020 notebook logic (`02_transport_budget_share.ipynb`) directly against
+the microdata rather than trusting a remembered figure: weighted median monthly wage R4,300,
+which reproduces `moments.csv`'s existing 0.1058 value exactly (R20.96 mean daily job-search
+transport cost / R198.16 daily wage equivalent) and confirms the pipeline before anything is
+built on it. The fare side comes from Banerjee and Sequeira (2023): their transport subsidy was
+"calibrated to represent a similar monetary transfer of ZAR 500... corresponding to 40 return
+tickets between Soweto and Johannesburg CBD" -- R12.50 per return trip -- over a route the same
+paper describes as "at least 20 km," close enough to this config's own `township_distance_max=20`
+to read one grid unit as one kilometre directly, with no separate invented mapping constant.
+
+`transport_cost_rate` = (12.50 / 20) / 4300 = 0.0001454, rounded to **0.000145** (a 27.6x cut
+from 0.004). `search_cost_per_trip`'s `DEFAULT_BOUNDS` rebased to **(0.0015, 0.006)**, bracketing
+the same R12.50 fare from half to a little over double it -- a plausible range for a flat,
+minimum-fare component distinct from the distance-scaled part `transport_cost_rate` now carries.
+Applied identically across every config sharing baseline's economics (`frictionless.yaml`,
+`trace_demo.yaml`, `scarce_vacancies.yaml`, `scarce_vacancies_subsidy.yaml`, the last halving the
+rescaled rate as its subsidy, exactly as it did before). `mvm.yaml` is deliberately untouched: it
+is its own regression fixture, not a spatial-economy config, and the MVM regression is confirmed
+byte-identical (0.0177, 0.0231, 1458, 1590) since MVM agents sit at distance zero and never pay
+the distance rate.
+
+**Neither anchor was chosen to hit the moment.** The wage figure comes from the general NHTS
+sample, the fare figure from BRT smartcard administrative data in a different paper entirely, and
+`search_cost_per_trip`'s box brackets a fare level, not a target share. The 0.72 per cent of a
+day's wage the old floor implied by itself, versus this anchor's roughly 3 to 14 per cent range,
+is the actual gap this correction closes.
+
+## The campaign under the rescaled cost, and what it changes
+
+Re-running the full campaign (200 LHS points, three restarts, both weight stages, 50 validation
+seeds) under the rescaled cost moves the optimum and the fit together:
+
+| | corrected-clock, old cost scale | rescaled |
+|---|---|---|
+| `search_cost_per_trip` | 0.045617 | 0.002515 |
+| `initial_search_capital` | 0.434110 | 1.496232 (boundary-adjacent, within 1% of the 1.5 upper bound) |
+| `firm_radius` | 1.756070 | 1.641070 |
+| `firm_kappa` | 0.414466 | 0.223938 |
+| restarts converged | 3/3 | 3/3 |
+
+**Fit at the rescaled optimum** (validation seeds, n=50): `discouraged_share` 0.1329 against
+0.1343 -- 99.0 per cent of target. `transport_budget_share` 0.0919 against 0.1058 -- 86.9 per
+cent, the moment that motivated this whole correction. `long_term_share` 0.7883 against 0.7744 --
+101.8 per cent, close to exact. `distance_gradient_slope` -0.8910 against -5.0333 -- 17.7 per
+cent, the one moment still missing by a wide margin, unchanged in kind from every earlier
+campaign.
+
+**Identification, recomputed from the published weight matrix and validation deviations**: with
+three of four moments now landing within 1 to 13 per cent of target, their contributions to the
+loss shrink close to zero and `distance_gradient_slope` -- despite carrying a fitted weight 4.89
+orders of magnitude below the largest -- now accounts for 51.42 per cent of the remaining
+objective, simply because it is the only deviation left that is not small. `transport_budget_share`
+carries 35.39 per cent, `long_term_share` 12.55, `discouraged_share` 0.65. This is the MSM
+objective behaving exactly as it should once the reachable moments are actually reached: residual
+loss concentrates on the one moment the model cannot move, not the ones it can.
+
+**One new caution, found while regenerating the response surface, stated plainly.** The
+`firm_kappa` axis shows a sharp regime boundary between 0.2 and 0.5: at 0.2 the moments resemble
+the optimum (`discouraged_share` 0.1548, `long_term_share` 0.8337), but at 0.5 and above the
+market collapses into a qualitatively different steady state (`discouraged_share` and
+`long_term_share` both near zero). The calibrated `firm_kappa` (0.223938) sits close to this
+cliff, on its good side. The fit reported above is genuine at this exact point, but a reader
+should know it is perched near a discontinuity rather than sitting in the middle of a wide basin
+-- a robustness question for Week 5's sensitivity sweeps, not resolved here.
+
+`distance_gradient_slope` and `initial_search_capital`'s boundary adjacency remain open items for
+the supervisor conversation -- neither was in scope for this correction, and neither is invented
+away by it.

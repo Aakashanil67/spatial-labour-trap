@@ -48,10 +48,13 @@ from src.config import Config
 # model's own free-entry logic, to move long_term_share if anything in the current four can.
 # Added to test that before concluding the moment is unreachable within the current parameter
 # set. Under the wrong-clock moment it was the only axis of the three where long_term_share
-# moved off zero at all (0.0053 at its floor) -- a result superseded, along with every other
-# flat-surface finding, by the months_jobless fix: at the corrected optimum the moment has real
-# gradient on all five axes. See DECISIONS.md, "long_term_share was measuring the wrong clock"
-# and "The campaign under the corrected clock".
+# moved off zero at all -- superseded, along with every other flat-surface finding, by the
+# months_jobless fix. At the current (corrected-clock, rescaled-cost) optimum this axis carries
+# a different and more load-bearing caution: there is a sharp regime boundary between
+# firm_kappa=0.2 and 0.5 -- below it the market resembles the calibrated optimum, at and above
+# it discouraged_share and long_term_share both collapse toward zero. The calibrated
+# firm_kappa=0.2239 sits close to this cliff, on its good side. See DECISIONS.md, "long_term_share
+# was measuring the wrong clock" and "The campaign under the rescaled cost, and what it changes".
 #
 # belief_multiplier (beta, M6) is not a calibrated MSM parameter -- it has no DEFAULT_BOUNDS
 # entry -- and was first swept away from 1.0 (unbiased) here. It is Banerjee and Sequeira
