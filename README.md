@@ -124,12 +124,14 @@ download folder first -- see [`data/README.md`](data/README.md).
 
 ## What's not done
 
-- **`distance_gradient_slope` still misses badly.** See "Status" above. Three of the four
-  moments now fit within 1 to 13 per cent of target; `distance_gradient_slope` reaches only 17.7
-  per cent of its empirical value and carries 51.4 per cent of the remaining objective as a
-  result. Whether that needs a different moment construction, a different mechanism, or is an
-  honest limitation to report, is a decision for Aakash and the supervisor, and Week 5 policy
-  work should not proceed on a calibrated model until it is taken.
+- **`distance_gradient_slope` reaches only 17.7 per cent of its target, diagnosed as a real
+  limitation rather than a bug.** Distance enters this model only through search cost, not
+  through search geometry; raising `transport_cost_rate` strengthens the slope but wrecks
+  `discouraged_share` and `transport_budget_share` on the way (see `DECISIONS.md`, "distance_
+  gradient_slope is a real, diagnosed limitation, not a bug"). The published baseline reports
+  this as a limitation. A direct distance-to-search-efficiency channel, in the spirit of Wasmer
+  and Zenou (2002)'s own DMP model, is being tried on `explore/distance-search-efficiency` and
+  reported separately, not folded into the calibrated baseline.
 - Week 5 (Banerjee-Sequeira validation, beliefs-vs-scarcity decomposition), Week 7 (policy
   experiments, condition mapping) and Week 8 (robustness, freeze) haven't started.
 - `distance_gradient_slope`'s empirical uncertainty is a three-city cross-sectional spread rather

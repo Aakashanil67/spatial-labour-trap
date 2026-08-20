@@ -2054,3 +2054,42 @@ should know it is perched near a discontinuity rather than sitting in the middle
 `distance_gradient_slope` and `initial_search_capital`'s boundary adjacency remain open items for
 the supervisor conversation -- neither was in scope for this correction, and neither is invented
 away by it.
+
+## distance_gradient_slope is a real, diagnosed limitation, not a bug
+
+Unlike the two calibration bugs above, `distance_gradient_slope`'s miss does not resolve into a
+fix. `distance_to_cbd` enters the model in exactly two places: `cost_per_trip`
+(`search_cost_per_trip + transport_cost_rate * distance_to_cbd`) and a reporting label
+(`distance_band`). It is never read by `search_positions()` -- every agent's search trips land
+in the same CBD-centred disk regardless of where that agent lives. The only channel by which
+distance can affect employment in this model is cost: a farther home raises the price of a
+trip, which slows search and deepens discouragement. There is no direct channel for "the jobs
+are physically farther away."
+
+**Confirmed by varying `transport_cost_rate` as a pure diagnostic**, not a committed change:
+
+| rate (x the anchored value) | `distance_gradient_slope` | `discouraged_share` | `transport_budget_share` |
+|---|---|---|---|
+| 1x (0.000145, calibrated) | -0.85 | 0.133 (on target) | 0.092 (on target) |
+| 2x | -1.19 | 0.210 | 0.129 |
+| 5x | -2.03 | 0.364 | 0.238 |
+| 10x | -2.75 | 0.457 (3.4x target) | 0.412 (3.9x target) |
+| 40x | -3.17 | 0.547 | 1.489 (14x target) |
+
+The slope scales with the cost rate almost monotonically, confirming cost is the entire
+mechanism -- and even at ten times the anchored, sourced rate it reaches only half the target
+while wrecking the two moments the rescale just fixed. No value of `transport_cost_rate` closes
+this gap without reopening the ones that are now closed. The channel is not dead: the raw
+near-versus-far employment gap at the calibrated point is real (nearest-quartile agents 44.0
+per cent employed against 27.2 per cent for the farthest quartile, a 16.8 percentage-point
+spread), just an order of magnitude short of Baez and Kshirsagar's -4.9 to -6.5 pp-per-10-
+percentile-points estimate once expressed on the same scale.
+
+**What the model is missing, named directly.** Wasmer and Zenou (2002) -- already in this
+thesis's own reviewed literature -- build distance into their DMP model as a direct reduction in
+search efficiency, not only as a cost paid. This model has the cost channel and not that one.
+Adding a direct distance-to-search-efficiency channel, disciplined against Wasmer and Zenou's own
+parameterisation rather than fitted to close this specific gap, is being tried on a separate
+branch (`explore/distance-search-efficiency`) rather than folded into the calibrated baseline
+here: it is a genuine mechanism change, not a correction, and the two results are worth reporting
+side by side rather than silently replacing one with the other.
