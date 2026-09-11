@@ -1862,6 +1862,15 @@ of the structural one, because this is the answer the repository's own published
 
 ## long_term_share was measuring the wrong clock
 
+> **Partially superseded, see "`Long_term_unempl`'s derivation: the caution above was right, and
+> the reading was wrong" near the end of this file.** The `months_jobless` fix itself stands, but
+> the claim below that `Long_term_unempl` measures "time since last employment" is wrong: a
+> cross-tabulation against the QLFS microdata shows it is derived from `Q36TIMESEEK`, how long
+> the respondent has been trying to find work, not from `Q313TIMEUNEMPLOY`, time since last
+> worked. This changes what pause tolerance the search-episode clock should use. Kept for the
+> record of the reasoning that led to the fix, which was independently correct even though its
+> stated justification was not.
+
 The moment was never structurally unreachable. It was mis-measured, and the mistake sat on the
 simulated side of the moment pair -- the same defect class as the transport_budget_share
 estimand mismatch the remediation fixed: two quantities sharing a name while measuring
@@ -2093,3 +2102,75 @@ parameterisation rather than fitted to close this specific gap, is being tried o
 branch (`explore/distance-search-efficiency`) rather than folded into the calibrated baseline
 here: it is a genuine mechanism change, not a correction, and the two results are worth reporting
 side by side rather than silently replacing one with the other.
+
+## `Long_term_unempl`'s derivation: the caution above was right, and the reading was wrong
+
+"long_term_share was measuring the wrong clock" (above) flagged its own uncertainty: "the QLFS
+metadata should be cited directly for `Long_term_unempl`'s derivation rather than this file's
+reading of the variable label." That caution has now been checked against the metadata, and the
+reading it flagged was wrong in the direction that matters.
+
+That entry states the empirical 0.7744 "comes from QLFS's own `Long_term_unempl`
+classification, which StatsSA derives from how long the respondent has been without work -- time
+since last employment, or since they began seeking for new entrants," and that this is why "a
+respondent who pauses active search for two months and then resumes does not reset their
+reported duration." This is the justification the `months_jobless` counter was built on.
+
+Cross-tabulating `Long_term_unempl` against both candidate source variables in the QLFS 2026 Q1
+microdata (`qlfs-2026-q1-v1.dta`, 62,819 records) settles which one it is actually derived from:
+
+```
+Long_term_unempl x Q36TIMESEEK ("How long been trying to find work")
+                                     Long-term   Short-term
+Less than 3 months                          0          836
+3 months - less than 6 months               0          411
+6 months - less than 9 months               0          241
+9 months - less than 1 year                 0          278
+1 year - less than 3 years               1462            0
+3 years - 5 years                        1051            0
+More than 5 years                        3229            0
+Do not know                                10            0
+
+Long_term_unempl x Q313TIMEUNEMPLOY ("Time since last worked")
+                                     Long-term   Short-term
+NaN                                      2709          390
+Less than 3 months                         13          530
+3 months - less than 6 months               4          346
+6 months - less than 9 months               7          220
+9 months - less than 1 year                11          198
+1 year - less than 3 years                772           35
+3 years - 5 years                         388            9
+More than 5 years                        1846           38
+Do not know                                 2            0
+```
+
+`Q36TIMESEEK` is a perfect, zero-off-diagonal predictor of `Long_term_unempl`: every respondent
+in a sub-year `Q36TIMESEEK` category is short-term, every respondent in a year-plus category is
+long-term, with no exceptions across 6,518 non-missing records. `Q313TIMEUNEMPLOY` is not: it
+disagrees with the classification in hundreds of cases in both directions, and is missing
+entirely for 2,709 of the classified long-term cases and 390 of the short-term ones -- a variable
+`Long_term_unempl` cannot be derived from if it has no value for a third of the long-term group.
+
+`Long_term_unempl` is derived from how long the respondent has been trying to find work, not
+from time since they last worked. The entry above has this backwards, and the false claim is
+also stated as fact in `Draft/04_Calibration.md` line 23 ("The Quarterly Labour Force Survey
+figure it was meant to match counts time since the respondent last worked, which a temporary
+pause in search does not reset"), which needs its own correction -- see
+`PROPOSED_CORRECTIONS.md` on the thesis side, since this file cannot edit the Draft directly.
+
+**What this does and does not change.** The `months_jobless` fix itself was not wrong to make:
+the state-spell clock (`months_in_state`, resetting on every discouraged-to-searching re-entry)
+was never going to match a duration statistic of any kind, given how often this model's agents
+cycle through discouragement. What was wrong is the specific claim about which duration
+`Long_term_unempl` measures, and therefore what pause tolerance a correctly-designed clock should
+use. A clock built to survive any discouragement pause indefinitely is the right answer if
+`Long_term_unempl` tracked continuous joblessness; it is not obviously the right answer for a
+variable that tracks how long someone reports actively trying to find work, since a genuine
+multi-month withdrawal from search plausibly resets what a respondent would report to that
+question. This is not a small wording difference -- it is the difference between a jobless-
+duration clock and a search-duration clock, and the two can diverge exactly during a
+discouragement episode, which is the model's central mechanism.
+
+This is now a decision for the search-episode clock definition (whether it counts elapsed
+months or only months of active search, and how it treats a pause), not something this entry
+resolves. It is not something to decide unilaterally in code.
