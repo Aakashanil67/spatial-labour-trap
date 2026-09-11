@@ -41,8 +41,10 @@ a common fiscal budget, reported as employment gained per rand.
 
 ## Status
 
-Weeks 1-4 of the build plan are implemented **in code** (the writing deliverables are not: no
-Model or Calibration chapter is drafted yet): the spatial model (endogenous firms, AR(1) shock,
+Weeks 1-4 of the build plan are implemented **in code**, and the Introduction, Literature
+Review, Model and Calibration chapters are now drafted (the policy comparison, the
+out-of-sample validation and the sensitivity analysis are not — those need runs that have not
+happened yet): the spatial model (endogenous firms, AR(1) shock,
 wealth heterogeneity), all four calibration moments computed from real DataFirst microdata, the
 matching-function fit with a constant-returns test before any efficiency number is trusted, and
 the MSM calibration engine. An independent verification on 17 August 2026 found six real
@@ -78,14 +80,13 @@ genuine at this point but perched near a discontinuity, not sitting in a wide ba
 `DECISIONS.md`, "The spatial money scale was never rebased into wage units" and "The campaign
 under the rescaled cost, and what it changes".
 
-**One number that is trustworthy right now**: SQ1 (does removing spatial friction change the
-matching function's fitted efficiency `a`?), paired across 20 common seeds under a genuine
-single-field counterfactual (`configs/baseline.yaml` vs. `configs/frictionless.yaml`, differing
-only in `transport_cost_rate`), gated by a real constant-returns hypothesis test rather than
-reported regardless: `delta_a = 0.0015`, 95% CI `[-0.024, 0.038]` -- statistically
-indistinguishable from zero at this population, re-run after `transport_cost_rate` was rebased
-(the sign and magnitude of the point estimate moved with the rescale; the conclusion did not).
-Reproduce it directly:
+**SQ1 (delta_a) is not a validated result.** `src/sq1.py`'s `main()` runs on
+`configs/baseline.yaml`'s illustrative parameters (`initial_search_capital=0.6`,
+`firm_kappa=0.9`), not the calibrated vector reported above, and the printed `[-0.024, 0.038]`
+range is the central 95 per cent of 16 seed pairs surviving a constant-returns test out of 20
+run, not a confidence interval for the mean. Do not cite `delta_a = 0.0015` as a finding until it
+has been rerun at the calibrated parameters with a pre-specified inference rule, which has not
+happened yet. Reproduce the current, unreplicated diagnostic directly:
 
 ```bash
 python -m src.sq1 --baseline configs/baseline.yaml --frictionless configs/frictionless.yaml \
