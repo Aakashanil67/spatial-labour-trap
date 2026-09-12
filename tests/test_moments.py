@@ -10,13 +10,15 @@ from dataclasses import replace
 import pandas as pd
 import pytest
 
-from src.agents import WAGE
+from src.agents import WAGE, SeekerState
 from src.config import Config
 from src.model import CityModel
 from src.moments import (
     DAYS_PER_MONTH,
+    _ols_slope,
     compute_moments,
     discouraged_share_narrow,
+    distance_gradient_slope,
     transport_budget_share,
 )
 
@@ -74,6 +76,62 @@ def test_distance_gradient_slope_is_a_real_number_when_spatial():
     slope = moments["distance_gradient_slope"]
     assert slope == slope  # not nan
     assert -100 <= slope <= 100  # sane bound: percentage points per 10 percentile points
+
+
+# B8: agents.py clips every agent inside cbd_radius to distance_to_cbd == 0.0 exactly, which
+# manufactures a real tie block. distance_gradient_slope() only reads .distance_to_cbd and
+# .state, so a minimal stub is enough to hand-verify the midrank arithmetic directly, without
+# running a full simulation.
+class _StubSeeker:
+    def __init__(self, distance_to_cbd: float, state: SeekerState):
+        self.distance_to_cbd = distance_to_cbd
+        self.state = state
+
+
+class _StubModel:
+    def __init__(self, seekers: list[_StubSeeker]):
+        self._seeker_list = seekers
+
+    def _seekers(self):
+        return self._seeker_list
+
+
+def test_distance_gradient_slope_uses_midranks_for_tied_distances():
+    """Two agents tied at distance 0.0 (both clipped inside cbd_radius) must get the average of
+    the ranks they'd occupy, not distinct consecutive ranks from a stable sort. Hand-derived:
+    distances [0, 0, 5, 10] -> average ranks (1-indexed) [1.5, 1.5, 3, 4] -> midranks (0-indexed)
+    [0.5, 0.5, 2, 3] -> percentile_rank = 100 * midrank / (n - 1) = 100 * midrank / 3."""
+    seekers = [
+        _StubSeeker(0.0, SeekerState.EMPLOYED),
+        _StubSeeker(0.0, SeekerState.SEARCHING),
+        _StubSeeker(5.0, SeekerState.EMPLOYED),
+        _StubSeeker(10.0, SeekerState.SEARCHING),
+    ]
+    expected_percentile_rank = [100 * 0.5 / 3, 100 * 0.5 / 3, 100 * 2 / 3, 100 * 3 / 3]
+    expected_employed = [1.0, 0.0, 1.0, 0.0]
+    expected_slope = _ols_slope(expected_percentile_rank, expected_employed) * 10 * 100
+
+    result = distance_gradient_slope(_StubModel(seekers))
+    assert result == pytest.approx(expected_slope)
+
+
+def test_distance_gradient_slope_matches_stable_sort_ranks_when_no_ties():
+    """With no tied distances, midranks reduce to ordinary 0..n-1 ranks -- the same value the
+    previous stable-sort implementation would have produced, so this fix changes nothing for a
+    population without a tie block."""
+    seekers = [
+        _StubSeeker(3.0, SeekerState.SEARCHING),
+        _StubSeeker(1.0, SeekerState.EMPLOYED),
+        _StubSeeker(7.0, SeekerState.SEARCHING),
+        _StubSeeker(2.0, SeekerState.EMPLOYED),
+    ]
+    # sorted order by distance: idx1(1) rank0, idx3(2) rank1, idx0(3) rank2, idx2(7) rank3
+    expected_percentile_rank = [100 * 2 / 3, 100 * 0 / 3, 100 * 3 / 3, 100 * 1 / 3]
+    expected_employed = [0.0, 1.0, 0.0, 1.0]
+    expected_slope = _ols_slope(expected_percentile_rank, expected_employed) * 10 * 100
+
+    result = distance_gradient_slope(_StubModel(seekers))
+    assert result == pytest.approx(expected_slope)
 
 
 def test_all_four_moments_are_present_and_finite_or_nan_only_for_distance():

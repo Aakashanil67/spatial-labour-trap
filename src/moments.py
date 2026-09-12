@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 
 import pandas as pd
+from scipy.stats import rankdata
 
 from src.agents import WAGE, SeekerState
 from src.model import CityModel
@@ -101,7 +102,15 @@ def distance_gradient_slope(model: CityModel) -> float:
     Cross-sectional (the model's final state), not time-averaged -- see the module docstring.
     Undefined (returns nan) in the degenerate case where every agent shares the same distance
     (the MVM's grid_size=1, or a spatial config with n_townships=0), since a percentile rank
-    over a constant is not meaningful and OLS on it is undefined."""
+    over a constant is not meaningful and OLS on it is undefined.
+
+    Midranks, not a stable sort: agents.py clips every agent inside cbd_radius to
+    distance_to_cbd == 0.0 exactly, so a spatial run manufactures a real tie block at zero. A
+    stable sort previously gave that block distinct consecutive ranks in agent-creation order,
+    inflating the regressor's variance without contributing any covariance and attenuating the
+    slope toward zero -- the same direction as the published miss. rankdata's "average" method
+    gives every member of a tie block the mean of the ranks it would occupy, matching how ties
+    are conventionally handled in a percentile-rank regression."""
     seekers = list(model._seekers())
     n = len(seekers)
     if n < 2:
@@ -111,10 +120,10 @@ def distance_gradient_slope(model: CityModel) -> float:
     if max(distances) == min(distances):
         return float("nan")
 
-    order = sorted(range(n), key=lambda i: distances[i])
-    percentile_rank = [0.0] * n
-    for rank, idx in enumerate(order):
-        percentile_rank[idx] = 100.0 * rank / (n - 1)
+    # rankdata is 1-indexed (1..n); subtract 1 to match this function's existing 0-indexed
+    # percentile convention (100.0 * rank / (n - 1), rank in [0, n - 1] with no ties).
+    midranks = rankdata(distances, method="average") - 1
+    percentile_rank = (100.0 * midranks / (n - 1)).tolist()
     employed = [1.0 if a.state is SeekerState.EMPLOYED else 0.0 for a in seekers]
 
     slope = _ols_slope(percentile_rank, employed)
