@@ -2174,3 +2174,37 @@ discouragement episode, which is the model's central mechanism.
 This is now a decision for the search-episode clock definition (whether it counts elapsed
 months or only months of active search, and how it treats a pause), not something this entry
 resolves. It is not something to decide unilaterally in code.
+
+## The working-age restriction, checked against every affected QLFS moment
+
+StatsSA's `Status` and `Long_term_unempl` are both derived for the labour force aged 15 and
+over, not the conventional 15-64 working-age population the model's agents represent -- the
+labour-force universe runs to age 87, with 0.99 per cent of it aged 65 or older. Checked against
+all three affected moments, using `Q14AGE` (notebooks 01 and 03, cells added alongside the
+existing pipeline; no change to what's written to `moments.csv`):
+
+| moment | unfiltered (15+) | working-age (15-64) | shift |
+| --- | --- | --- | --- |
+| discouraged_share | 0.134282 | 0.135234 | +0.000952 |
+| long_term_share | 0.774421 | 0.774405 | -0.000017 |
+| separation rate, monthly | 0.0295827815 | 0.0291915774 | -0.0003912041 |
+
+`long_term_share` barely moves -- the long-term unemployed population is overwhelmingly
+working-age already, so the restriction excludes almost nobody from it. `discouraged_share`
+moves by 0.0009 against a stated standard error of 0.0023, which is small but not nothing when
+the calibration chapter reports this moment fitting to within 0.38 standard errors.
+
+The separation rate moves the most, in both absolute and relative terms: 536 of 31,615
+employed-t0-consistent records across the three quarter-pairs (about 1.7 per cent) are excluded
+by the restriction, and the pooled quarterly rate drops from 0.0861488108 to 0.0850431633, a
+1.3 per cent relative fall. This is exactly the mechanism the restriction was checking for:
+`employed_t0` has never had an age filter, so someone who retires between quarters (`Employed`
+to `Other not economically active` around age 65) has always counted as a separation
+identically to someone who becomes unemployed. Both the unrestricted and working-age monthly
+rates round to the same `0.0296` `configs/baseline.yaml` currently carries, so this alone
+doesn't change the rounded config value, but the underlying estimand is measurably different
+and the retirement-inflation concern is real, not hypothetical.
+
+None of these values have been written to `moments.csv` or to any config. Whether to switch the
+targets to the working-age-restricted versions is a decision for the thesis, not for a notebook
+cell to make unilaterally -- see the plan's stop-and-ask list.
