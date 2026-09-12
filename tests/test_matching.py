@@ -60,3 +60,4 @@ def test_drops_periods_with_zero_matches_rather_than_taking_their_log():
     )
     fit = fit_matching_function(window)
     assert fit.n_obs == 30
+    assert fit.n_dropped == 2

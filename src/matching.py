@@ -40,6 +40,7 @@ class MatchingFit:
         float  # matching elasticity w.r.t. u under CRS -- dmp.py's phi, fitted not assumed
     )
     n_obs: int
+    n_dropped: int  # periods excluded for u==0, v==0 or m==0 -- see the docstring below
 
 
 def fit_matching_function(window: pd.DataFrame, alpha: float = 0.05) -> MatchingFit:
@@ -48,9 +49,13 @@ def fit_matching_function(window: pd.DataFrame, alpha: float = 0.05) -> Matching
     `log(m/v) = log a + b_u log(u/v)` (b_v = 1 - b_u substituted in, leaving one regressor).
     Both fits use the same rows; periods with zero unemployment, zero vacancies or zero
     matches are dropped first since their logs are undefined -- not treated as zero matching,
-    which would badly bias the elasticity estimates towards the corner."""
+    which would badly bias the elasticity estimates towards the corner. That drop is not free:
+    it conditions the regression on periods where matching happened, which is a different
+    population from every period the window covers. The count is returned as n_dropped rather
+    than left visible only in this comment."""
     usable = window[(window["u"] > 0) & (window["v"] > 0) & (window["m"] > 0)]
     n_obs = len(usable)
+    n_dropped = len(window) - n_obs
     if n_obs < 3:
         raise ValueError(
             f"only {n_obs} usable (u>0, v>0, m>0) periods in this window -- need at least 3 "
@@ -82,4 +87,5 @@ def fit_matching_function(window: pd.DataFrame, alpha: float = 0.05) -> Matching
         a_constrained=float(np.exp(log_a_constrained)),
         phi_constrained=float(phi_constrained),
         n_obs=n_obs,
+        n_dropped=n_dropped,
     )

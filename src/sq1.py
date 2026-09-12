@@ -19,7 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -76,6 +76,7 @@ class SeedResult:
     baseline_a_unconstrained: float
     baseline_a_constrained: float
     baseline_n_obs: int
+    baseline_n_dropped: int  # zero-u/v/m periods excluded -- see matching.py's own docstring
     frictionless_b_u: float
     frictionless_b_v: float
     frictionless_returns_to_scale: float
@@ -84,6 +85,7 @@ class SeedResult:
     frictionless_a_unconstrained: float
     frictionless_a_constrained: float
     frictionless_n_obs: int
+    frictionless_n_dropped: int
     crs_survives_both: bool
     # nan unless crs_survives_both -- a constrained delta_a computed under a rejected CRS
     # assumption in either arm is not a number worth carrying forward, not even for reference.
@@ -114,6 +116,7 @@ def seed_result(
         baseline_a_unconstrained=b_fit.a_unconstrained,
         baseline_a_constrained=b_fit.a_constrained,
         baseline_n_obs=b_fit.n_obs,
+        baseline_n_dropped=b_fit.n_dropped,
         frictionless_b_u=f_fit.b_u,
         frictionless_b_v=f_fit.b_v,
         frictionless_returns_to_scale=f_fit.returns_to_scale,
@@ -122,6 +125,7 @@ def seed_result(
         frictionless_a_unconstrained=f_fit.a_unconstrained,
         frictionless_a_constrained=f_fit.a_constrained,
         frictionless_n_obs=f_fit.n_obs,
+        frictionless_n_dropped=f_fit.n_dropped,
         crs_survives_both=crs_survives_both,
         delta_a_constrained=(b_fit.a_constrained - f_fit.a_constrained)
         if crs_survives_both
@@ -173,20 +177,42 @@ def run_sq1(
         "frictionless_binomial_pvalue": float(frictionless_binom.pvalue),
         "n_valid_paired_crs_comparisons": n_valid,
         "constrained_headline_reportable": reportable,
+        # matching.py drops periods with zero u, v or m before fitting -- disclosed here rather
+        # than only in that module's own docstring, since it conditions the regression on a
+        # different population than every period the window covers.
+        "baseline_n_dropped_periods_total": int(df["baseline_n_dropped"].sum()),
+        "frictionless_n_dropped_periods_total": int(df["frictionless_n_dropped"].sum()),
     }
+
+    # The all-seed, unconstrained result is the primary estimate: it uses every seed run, with
+    # no outcome-dependent selection. The constrained, CRS-surviving-seeds result is
+    # supplementary -- restricting to seeds that pass a constant-returns test is a post-
+    # selection problem an interval computed on the surviving seeds does not correct for, even
+    # when it is presented alongside the honest count of how many seeds were excluded.
+    unconstrained_vals = df["delta_a_unconstrained"].to_numpy()
+    summary["primary_delta_a_unconstrained_all_seeds_mean"] = float(unconstrained_vals.mean())
+    if n_seeds > 1:
+        lo_u, hi_u = np.percentile(unconstrained_vals, [2.5, 97.5])
+        # Not a confidence interval for the mean -- the central 95 per cent of this arm's own
+        # raw seed outcomes. A CI for the mean would need to account for how that mean varies
+        # across repeated sampling, not just where the individual seed draws happen to fall.
+        summary["primary_delta_a_unconstrained_all_seeds_central_95pct_range"] = [
+            float(lo_u),
+            float(hi_u),
+        ]
 
     if n_valid > 0:
         constrained_vals = valid["delta_a_constrained"].to_numpy()
-        summary["paired_delta_a_constrained_mean"] = float(constrained_vals.mean())
+        summary["supplementary_delta_a_constrained_surviving_seeds_mean"] = float(
+            constrained_vals.mean()
+        )
+        summary["supplementary_delta_a_constrained_n_surviving_of_n_run"] = [n_valid, n_seeds]
         if n_valid > 1:
             lo, hi = np.percentile(constrained_vals, [2.5, 97.5])
-            summary["paired_delta_a_constrained_ci_95"] = [float(lo), float(hi)]
-
-    unconstrained_vals = df["delta_a_unconstrained"].to_numpy()
-    summary["paired_delta_a_unconstrained_mean"] = float(unconstrained_vals.mean())
-    if n_seeds > 1:
-        lo_u, hi_u = np.percentile(unconstrained_vals, [2.5, 97.5])
-        summary["paired_delta_a_unconstrained_ci_95"] = [float(lo_u), float(hi_u)]
+            summary["supplementary_delta_a_constrained_central_95pct_range"] = [
+                float(lo),
+                float(hi),
+            ]
 
     if not reportable:
         summary["finding"] = (
@@ -198,6 +224,34 @@ def run_sq1(
         )
 
     return df, summary
+
+
+def load_calibrated_overrides(calibration_result_path: str) -> dict:
+    """Reads the "params" object out of a calibration_result.json-shaped file (the format
+    src.calibrate._write_published_outputs writes), for overriding a base config's estimated
+    parameters. The advertised SQ1 command has always run on configs/baseline.yaml's own
+    values, and that file's own header says they are illustrative, not calibrated -- this is
+    the path that lets a run use the actually-fitted economy instead."""
+    payload = json.loads(Path(calibration_result_path).read_text(encoding="utf-8"))
+    return dict(payload["params"])
+
+
+def _apply_overrides_to_both(
+    baseline_config: Config, frictionless_config: Config, overrides: dict
+) -> tuple[Config, Config]:
+    """Applies the same override dict to both configs. Since assert_single_field_counterfactual
+    has already confirmed the two YAML files differ only in transport_cost_rate, and this
+    override never touches that field (it carries only the estimated parameters, which
+    calibrate.py's PARAM_NAMES never includes transport_cost_rate among), applying it
+    identically to both preserves the single-field counterfactual rather than risking a second,
+    silent difference between the arms."""
+    if "transport_cost_rate" in overrides:
+        raise ValueError(
+            "a calibrated-parameter override must not include transport_cost_rate -- that is "
+            "the one field this comparison is meant to isolate, and overriding it identically "
+            "on both arms would silently erase the counterfactual."
+        )
+    return replace(baseline_config, **overrides), replace(frictionless_config, **overrides)
 
 
 def _parse_seed_spec(spec: str) -> list[int]:
@@ -218,12 +272,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seeds", required=True, help='e.g. "1:20" or a single integer')
     parser.add_argument("--out-dir", default="results/published")
     parser.add_argument("--alpha", type=float, default=ALPHA)
+    parser.add_argument(
+        "--calibrated-params",
+        default=None,
+        help=(
+            "path to a calibration_result.json to override the base config's estimated "
+            "parameters with, on both arms equally -- run against the fitted economy instead "
+            "of --baseline's own (illustrative, unless it happens to be the fitted config) "
+            "values. Must not itself set transport_cost_rate."
+        ),
+    )
     args = parser.parse_args(argv)
 
     assert_single_field_counterfactual(args.baseline, args.frictionless)
 
     baseline_config = Config.from_yaml(args.baseline)
     frictionless_config = Config.from_yaml(args.frictionless)
+    if args.calibrated_params:
+        overrides = load_calibrated_overrides(args.calibrated_params)
+        baseline_config, frictionless_config = _apply_overrides_to_both(
+            baseline_config, frictionless_config, overrides
+        )
     seeds = _parse_seed_spec(args.seeds)
 
     df, summary = run_sq1(baseline_config, frictionless_config, seeds, alpha=args.alpha)
@@ -253,20 +322,37 @@ def main(argv: list[str] | None = None) -> int:
         f"frictionless CRS rejections: {summary['frictionless_crs_rejections']}/"
         f"{summary['n_paired_seeds']} (binomial p={summary['frictionless_binomial_pvalue']:.4f})"
     )
+    print(
+        f"periods dropped for zero u/v/m: baseline {summary['baseline_n_dropped_periods_total']}, "
+        f"frictionless {summary['frictionless_n_dropped_periods_total']} "
+        "(matching.py fits only periods where matching happened -- see its own docstring)"
+    )
     print()
+
+    # Primary estimate first: every seed run, no outcome-dependent selection.
+    primary_range = summary.get("primary_delta_a_unconstrained_all_seeds_central_95pct_range")
+    print(
+        f"PRIMARY -- unconstrained delta_a, all {summary['n_paired_seeds']} seeds: "
+        f"mean={summary['primary_delta_a_unconstrained_all_seeds_mean']:.4f}  "
+        f"central 95% of seed outcomes={primary_range}"
+    )
+
+    # Supplementary: restricted to seeds surviving the CRS test in both arms. Reported
+    # alongside the primary estimate, not in place of it -- selecting on a test outcome and
+    # then reporting an interval on the survivors does not correct for that selection.
     if summary["constrained_headline_reportable"]:
-        ci = summary.get("paired_delta_a_constrained_ci_95")
+        supp_range = summary.get("supplementary_delta_a_constrained_central_95pct_range")
+        n_valid, n_run = summary["supplementary_delta_a_constrained_n_surviving_of_n_run"]
+        supp_mean = summary["supplementary_delta_a_constrained_surviving_seeds_mean"]
         print(
-            f"constrained delta_a (n={summary['n_valid_paired_crs_comparisons']}): "
-            f"mean={summary['paired_delta_a_constrained_mean']:.4f}  95% CI={ci}"
+            f"SUPPLEMENTARY -- constrained delta_a, {n_valid} of {n_run} seeds surviving CRS "
+            f"in both arms: mean={supp_mean:.4f}  "
+            f"central 95% of surviving-seed outcomes={supp_range}  "
+            "(post-selection: these seeds were chosen because they passed a test, not drawn "
+            "at random)"
         )
     else:
-        print(f"HEADLINE: constrained delta_a NOT reportable -- {summary['finding']}")
-    print(
-        f"unconstrained delta_a (sensitivity, all {summary['n_paired_seeds']} seeds): "
-        f"mean={summary['paired_delta_a_unconstrained_mean']:.4f}  "
-        f"95% CI={summary.get('paired_delta_a_unconstrained_ci_95')}"
-    )
+        print(f"SUPPLEMENTARY -- constrained delta_a NOT reportable: {summary['finding']}")
     return 0
 
 

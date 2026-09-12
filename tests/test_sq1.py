@@ -16,7 +16,9 @@ import yaml
 
 from src.sq1 import (
     ALPHA,
+    _apply_overrides_to_both,
     assert_single_field_counterfactual,
+    load_calibrated_overrides,
     main,
     run_sq1,
     seed_result,
@@ -207,7 +209,11 @@ def test_run_sq1_reports_a_constrained_headline_when_crs_holds_everywhere(monkey
     assert summary["baseline_crs_rejections"] == 0
     assert summary["constrained_headline_reportable"] is True
     assert summary["n_valid_paired_crs_comparisons"] == 5
-    assert summary["paired_delta_a_constrained_mean"] == pytest.approx(0.0, abs=1e-9)
+    assert summary["supplementary_delta_a_constrained_surviving_seeds_mean"] == pytest.approx(
+        0.0, abs=1e-9
+    )
+    assert summary["supplementary_delta_a_constrained_n_surviving_of_n_run"] == [5, 5]
+    assert summary["primary_delta_a_unconstrained_all_seeds_mean"] == pytest.approx(0.0, abs=1e-9)
 
 
 def test_main_writes_csv_and_json_and_refuses_a_bad_config_pair(tmp_path, monkeypatch):
@@ -262,3 +268,213 @@ def test_main_writes_csv_and_json_and_refuses_a_bad_config_pair(tmp_path, monkey
     assert len(written) == 3
     summary = json.loads(json_path.read_text(encoding="utf-8"))
     assert summary["n_paired_seeds"] == 3
+
+
+# D2: four defects the README/PROGRESS.md audit found -- the "ci_95" key naming a percentile
+# range as though it were a confidence interval, the constrained (post-selection) result being
+# treated as the headline instead of the all-seed result, no way to run against a fitted
+# economy rather than baseline.yaml's own illustrative parameters, and matching.py's
+# zero-match-period drop being disclosed only in a code comment.
+
+
+def test_run_sq1_reports_the_all_seed_result_as_primary_and_labels_the_old_ci_key_honestly(
+    monkeypatch,
+):
+    """The all-seed (unconstrained) estimate is present under a name that says what it is --
+    not "ci_95", since it is the central 95 per cent of raw seed outcomes, not a confidence
+    interval for the mean -- and it uses every seed, not only the ones surviving CRS."""
+    from src.config import Config
+
+    seeds = list(range(1, 11))
+    crs = {
+        s: _synthetic_history(a=0.4, b_u=0.55, b_v=0.45, n=200, seed=100 + s, noise_sd=0.01)
+        for s in seeds
+    }
+    non_crs = {
+        s: _synthetic_history(a=0.4, b_u=0.8, b_v=0.5, n=200, seed=200 + s, noise_sd=0.01)
+        for s in seeds
+    }
+    # Baseline fails CRS on half the seeds, so the primary (all-seed) and supplementary
+    # (surviving-seed) counts must genuinely differ -- otherwise this test cannot tell them
+    # apart from a bug that silently applies the same filter to both.
+    histories = {}
+    for s in seeds:
+        histories[(1, s)] = non_crs[s] if s <= 5 else crs[s]
+        histories[(2, s)] = crs[s]
+
+    monkeypatch.setattr("src.sq1.run_many", _fake_run_many_factory(histories))
+
+    baseline_cfg = Config(
+        n_agents=10,
+        n_vacancies=1,
+        initial_search_capital=0.6,
+        search_cost_per_trip=0.02,
+        separation_rate=0.03,
+        belief_multiplier=1.0,
+        household_inflow=0.008,
+        reentry_threshold=0.035,
+        max_trips_per_step=3,
+        n_steps=10,
+        seed=1,
+        burn_in_steps=0,
+    )
+    frictionless_cfg = baseline_cfg.__class__(**{**baseline_cfg.__dict__, "seed": 2})
+
+    _, summary = run_sq1(baseline_cfg, frictionless_cfg, seeds)
+
+    assert "primary_delta_a_unconstrained_all_seeds_mean" in summary
+    assert "primary_delta_a_unconstrained_all_seeds_central_95pct_range" in summary
+    assert "supplementary_delta_a_constrained_surviving_seeds_mean" in summary
+    n_valid, n_run = summary["supplementary_delta_a_constrained_n_surviving_of_n_run"]
+    assert n_run == 10
+    # Seeds 1-5 fail CRS in the baseline arm by construction; a well-behaved test could still
+    # reject a true null on a handful of the noisy seeds 6-10 by chance, so this checks that a
+    # genuine, non-trivial subset survives -- not an exact count from one noise realisation.
+    assert 1 <= n_valid < 10
+    # Neither renamed key nor its old "ci_95" spelling should coexist.
+    assert "paired_delta_a_constrained_ci_95" not in summary
+    assert "paired_delta_a_unconstrained_ci_95" not in summary
+
+
+def test_run_sq1_surfaces_total_dropped_periods_per_arm(monkeypatch):
+    """matching.py drops periods with zero u, v or m before fitting -- the total dropped per
+    arm, summed across seeds, must be visible in the summary, not only in a code comment."""
+    from src.config import Config
+
+    history_with_zeros = _synthetic_history(a=0.4, b_u=0.55, b_v=0.45, n=200, seed=1, noise_sd=0.0)
+    history_with_zeros = pd.concat(
+        [
+            history_with_zeros,
+            pd.DataFrame({"step": [201, 202], "u": [5, 6], "v": [2, 3], "m": [0, 0]}),
+        ],
+        ignore_index=True,
+    )
+    clean_history = _synthetic_history(a=0.4, b_u=0.55, b_v=0.45, n=200, seed=1, noise_sd=0.0)
+
+    monkeypatch.setattr(
+        "src.sq1.run_many",
+        _fake_run_many_factory({(1, 1): history_with_zeros, (2, 1): clean_history}),
+    )
+
+    baseline_cfg = Config(
+        n_agents=10,
+        n_vacancies=1,
+        initial_search_capital=0.6,
+        search_cost_per_trip=0.02,
+        separation_rate=0.03,
+        belief_multiplier=1.0,
+        household_inflow=0.008,
+        reentry_threshold=0.035,
+        max_trips_per_step=3,
+        n_steps=10,
+        seed=1,
+        burn_in_steps=0,
+    )
+    frictionless_cfg = baseline_cfg.__class__(**{**baseline_cfg.__dict__, "seed": 2})
+
+    _, summary = run_sq1(baseline_cfg, frictionless_cfg, [1])
+    assert summary["baseline_n_dropped_periods_total"] == 2
+    assert summary["frictionless_n_dropped_periods_total"] == 0
+
+
+def test_load_calibrated_overrides_reads_the_params_object(tmp_path):
+    result_path = tmp_path / "calibration_result.json"
+    result_path.write_text(
+        json.dumps({"params": {"firm_kappa": 0.2239, "firm_radius": 1.6411}, "other": "ignored"}),
+        encoding="utf-8",
+    )
+    overrides = load_calibrated_overrides(str(result_path))
+    assert overrides == {"firm_kappa": 0.2239, "firm_radius": 1.6411}
+
+
+def test_apply_overrides_to_both_applies_the_same_override_to_both_configs():
+    from src.config import Config
+
+    base = Config(
+        n_agents=10,
+        n_vacancies=1,
+        initial_search_capital=0.6,
+        search_cost_per_trip=0.02,
+        separation_rate=0.03,
+        belief_multiplier=1.0,
+        household_inflow=0.008,
+        reentry_threshold=0.035,
+        max_trips_per_step=3,
+        n_steps=10,
+        seed=1,
+        transport_cost_rate=0.004,
+    )
+    frictionless = base.__class__(**{**base.__dict__, "transport_cost_rate": 0.0})
+
+    b, f = _apply_overrides_to_both(base, frictionless, {"firm_kappa": 0.9, "firm_radius": 2.5})
+    assert b.firm_kappa == 0.9
+    assert f.firm_kappa == 0.9
+    assert b.firm_radius == 2.5
+    assert f.firm_radius == 2.5
+    # transport_cost_rate, the one field this comparison isolates, is untouched.
+    assert b.transport_cost_rate == 0.004
+    assert f.transport_cost_rate == 0.0
+
+
+def test_apply_overrides_to_both_refuses_a_transport_cost_rate_override():
+    from src.config import Config
+
+    base = Config(
+        n_agents=10,
+        n_vacancies=1,
+        initial_search_capital=0.6,
+        search_cost_per_trip=0.02,
+        separation_rate=0.03,
+        belief_multiplier=1.0,
+        household_inflow=0.008,
+        reentry_threshold=0.035,
+        max_trips_per_step=3,
+        n_steps=10,
+        seed=1,
+    )
+    with pytest.raises(ValueError, match="transport_cost_rate"):
+        _apply_overrides_to_both(base, base, {"transport_cost_rate": 0.1})
+
+
+def test_main_accepts_calibrated_params_and_applies_them_to_both_arms(tmp_path, monkeypatch):
+    baseline_path = _write_yaml(tmp_path / "baseline.yaml", _BASE_FIELDS)
+    frictionless_path = _write_yaml(
+        tmp_path / "frictionless.yaml", dict(_BASE_FIELDS, transport_cost_rate=0.0)
+    )
+    calibrated_path = tmp_path / "calibration_result.json"
+    calibrated_path.write_text(
+        json.dumps({"params": {"firm_kappa": 0.2239, "initial_search_capital": 1.4962}}),
+        encoding="utf-8",
+    )
+
+    seen_configs = []
+
+    def _fake_run_many(config, seeds, n_jobs=None):
+        seen_configs.append(config)
+        return [
+            _synthetic_history(a=0.4, b_u=0.55, b_v=0.45, n=200, seed=1000 + seed, noise_sd=0.01)
+            for seed in seeds
+        ]
+
+    monkeypatch.setattr("src.sq1.run_many", _fake_run_many)
+    exit_code = main(
+        [
+            "--baseline",
+            str(baseline_path),
+            "--frictionless",
+            str(frictionless_path),
+            "--seeds",
+            "1:2",
+            "--out-dir",
+            str(tmp_path / "out"),
+            "--calibrated-params",
+            str(calibrated_path),
+        ]
+    )
+    assert exit_code == 0
+    assert len(seen_configs) == 2
+    for cfg in seen_configs:
+        assert cfg.firm_kappa == 0.2239
+        assert cfg.initial_search_capital == 1.4962
+    # the two arms still differ only in transport_cost_rate, exactly as before the override.
+    assert seen_configs[0].transport_cost_rate != seen_configs[1].transport_cost_rate
