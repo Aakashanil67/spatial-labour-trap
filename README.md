@@ -131,11 +131,17 @@ download folder first -- see [`data/README.md`](data/README.md).
   `discouraged_share` and `transport_budget_share` on the way (see `DECISIONS.md`, "distance_
   gradient_slope is a real, diagnosed limitation, not a bug"). The published baseline reports
   this as a limitation. A direct distance-to-search-efficiency channel, in the spirit of Wasmer
-  and Zenou (2002)'s own DMP model, is being tried on `explore/distance-search-efficiency` and
-  reported separately, not folded into the calibrated baseline.
+  and Zenou (2002)'s own DMP model, was tried on `explore/distance-search-efficiency`: fixed at
+  its source paper's own bound the fit improves sharply, but freely estimated as a genuine fifth
+  parameter against the same four moments it fails the order condition for identification, so
+  that specification's numerical optimum is not a genuine estimate. The mechanism remains
+  untested rather than tested and rejected -- identifying it needs a fifth independent moment or
+  a profile over pre-specified values, neither of which has been done, and it is not folded into
+  the calibrated baseline.
 - Week 5 (Banerjee-Sequeira validation, beliefs-vs-scarcity decomposition), Week 7 (policy
   experiments, condition mapping) and Week 8 (robustness, freeze) haven't started.
 - `distance_gradient_slope`'s empirical uncertainty is a three-city cross-sectional spread rather
   than a formal sampling standard error, and its fitted weight sits 4.39 to 4.89 orders of
-  magnitude below the other three moments -- under-identified by the current moment set, not yet
-  resolved (see `DECISIONS.md`).
+  magnitude below the other three moments. That weight ratio is not itself evidence about
+  identification -- weight matrix diagonals are unit-dependent -- but the underlying uncertainty
+  measure is still the wrong object, not yet resolved (see `DECISIONS.md`).

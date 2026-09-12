@@ -6,9 +6,10 @@ against Banerjee and Sequeira's null result as the substitute. **Three of the fo
 fit within 1 to 13 per cent of target** at the published optimum (`discouraged_share` 99.0 per
 cent, `long_term_share` 101.8, `transport_budget_share` 86.9); `distance_gradient_slope` reaches
 only 17.7 per cent of target and, precisely because the other three are close to fit, now carries
-51.4 per cent of the objective despite a fitted weight 4.89 orders of magnitude below the
-largest -- the one moment that still pins nothing. See DECISIONS.md, "The campaign under the
-rescaled cost, and what it changes".
+51.4 per cent of the objective, with a fitted weight 4.89 orders of magnitude below the largest.
+That weight ratio is not itself evidence the moment is unidentified -- weight matrix diagonals
+are unit-dependent, so their relative magnitude says nothing about how much a moment constrains
+the fit. See DECISIONS.md, "The campaign under the rescaled cost, and what it changes".
 
 **The weight matrix is fixed for the whole of one search, not recomputed at each candidate.**
 An earlier version of this module weighted each candidate's deviation by the inverse of (data
