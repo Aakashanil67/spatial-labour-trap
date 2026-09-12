@@ -1,0 +1,18 @@
+{
+  "command": "python -m scripts.diagnose_window_stability --config configs/baseline.yaml --params results/published/calibration_result.json --seeds 1001:1003 --steps 2400 --initial-capital-multiplier 0.5,1,2 --mixed-state-donor-steps 600 --output-dir results/review_v2/window_stability",
+  "config_path": "configs/baseline.yaml",
+  "params_path": "results/published/calibration_result.json",
+  "seeds": [
+    1001,
+    1002,
+    1003
+  ],
+  "steps": 2400,
+  "burn_in_steps": 50,
+  "config_labels": [
+    "capital_0.5x",
+    "capital_1.0x",
+    "capital_2.0x"
+  ],
+  "code_fingerprint": "4ee76189b2bf9cef"
+}
