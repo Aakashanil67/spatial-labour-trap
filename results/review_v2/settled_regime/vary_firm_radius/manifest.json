@@ -1,0 +1,18 @@
+{
+  "command": "python -m scripts.diagnose_window_stability --config configs/baseline.yaml --params results/published/calibration_result.json --seeds 1001:1003 --steps 3600 --vary-param firm_radius --vary-values 1.0,1.641069983236403,4.0 --output-dir results/review_v2/settled_regime/vary_firm_radius",
+  "config_path": "configs/baseline.yaml",
+  "params_path": "results/published/calibration_result.json",
+  "seeds": [
+    1001,
+    1002,
+    1003
+  ],
+  "steps": 3600,
+  "burn_in_steps": 50,
+  "config_labels": [
+    "firm_radius_1.0",
+    "firm_radius_1.641069983236403",
+    "firm_radius_4.0"
+  ],
+  "code_fingerprint": "4ee76189b2bf9cef"
+}

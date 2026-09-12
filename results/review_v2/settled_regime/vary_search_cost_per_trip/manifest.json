@@ -1,0 +1,18 @@
+{
+  "command": "python -m scripts.diagnose_window_stability --config configs/baseline.yaml --params results/published/calibration_result.json --seeds 1001:1003 --steps 3600 --vary-param search_cost_per_trip --vary-values 0.0015,0.0025146203001423,0.006 --output-dir results/review_v2/settled_regime/vary_search_cost_per_trip",
+  "config_path": "configs/baseline.yaml",
+  "params_path": "results/published/calibration_result.json",
+  "seeds": [
+    1001,
+    1002,
+    1003
+  ],
+  "steps": 3600,
+  "burn_in_steps": 50,
+  "config_labels": [
+    "search_cost_per_trip_0.0015",
+    "search_cost_per_trip_0.0025146203001423",
+    "search_cost_per_trip_0.006"
+  ],
+  "code_fingerprint": "4ee76189b2bf9cef"
+}

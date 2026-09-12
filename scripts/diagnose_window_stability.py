@@ -132,7 +132,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--params", default=None)
     parser.add_argument("--seeds", required=True, help='e.g. "1001:1003" or "1001,1002,1003"')
     parser.add_argument("--steps", type=int, required=True)
+    parser.add_argument(
+        "--burn-in", type=int, default=None, help="override the config's own burn_in_steps"
+    )
     parser.add_argument("--initial-capital-multiplier", default=None)
+    parser.add_argument(
+        "--vary-param",
+        default=None,
+        help="a Config field to sweep instead of initial_search_capital, e.g. "
+        "search_cost_per_trip, firm_radius, firm_kappa. Absolute values, not multipliers -- "
+        "see --vary-values.",
+    )
+    parser.add_argument(
+        "--vary-values",
+        default=None,
+        help="comma list of absolute values for --vary-param, one config_label per value.",
+    )
     parser.add_argument("--mixed-state-donor-steps", type=int, default=None)
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args(argv)
@@ -142,22 +157,28 @@ def main(argv: list[str] | None = None) -> int:
         overrides = json.loads(Path(args.params).read_text(encoding="utf-8"))["params"]
         base_config = replace(base_config, **overrides)
     base_config = replace(base_config, n_steps=args.steps)
+    if args.burn_in is not None:
+        base_config = replace(base_config, burn_in_steps=args.burn_in)
     burn_in = base_config.burn_in_steps
 
     seeds = _parse_seed_spec(args.seeds)
-    multipliers = (
-        [float(x) for x in args.initial_capital_multiplier.split(",")]
-        if args.initial_capital_multiplier
-        else [None]
-    )
     configs: dict[str, Config] = {}
-    for mult in multipliers:
-        if mult is None:
-            configs["base"] = base_config
-        else:
-            configs[f"capital_{mult}x"] = replace(
-                base_config, initial_search_capital=base_config.initial_search_capital * mult
-            )
+    if args.vary_param:
+        for value in (float(x) for x in args.vary_values.split(",")):
+            configs[f"{args.vary_param}_{value}"] = replace(base_config, **{args.vary_param: value})
+    else:
+        multipliers = (
+            [float(x) for x in args.initial_capital_multiplier.split(",")]
+            if args.initial_capital_multiplier
+            else [None]
+        )
+        for mult in multipliers:
+            if mult is None:
+                configs["base"] = base_config
+            else:
+                configs[f"capital_{mult}x"] = replace(
+                    base_config, initial_search_capital=base_config.initial_search_capital * mult
+                )
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

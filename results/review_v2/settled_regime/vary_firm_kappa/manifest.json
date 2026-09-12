@@ -1,0 +1,18 @@
+{
+  "command": "python -m scripts.diagnose_window_stability --config configs/baseline.yaml --params results/published/calibration_result.json --seeds 1001:1003 --steps 3600 --vary-param firm_kappa --vary-values 0.2,0.22393789239458572,2.0 --output-dir results/review_v2/settled_regime/vary_firm_kappa",
+  "config_path": "configs/baseline.yaml",
+  "params_path": "results/published/calibration_result.json",
+  "seeds": [
+    1001,
+    1002,
+    1003
+  ],
+  "steps": 3600,
+  "burn_in_steps": 50,
+  "config_labels": [
+    "firm_kappa_0.2",
+    "firm_kappa_0.22393789239458572",
+    "firm_kappa_2.0"
+  ],
+  "code_fingerprint": "4ee76189b2bf9cef"
+}
