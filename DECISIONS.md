@@ -2208,3 +2208,45 @@ and the retirement-inflation concern is real, not hypothetical.
 None of these values have been written to `moments.csv` or to any config. Whether to switch the
 targets to the working-age-restricted versions is a decision for the thesis, not for a notebook
 cell to make unilaterally -- see the plan's stop-and-ask list.
+
+## The months-jobless clock: two errors that cancelled, and a fix that broke the cancellation
+
+`months_jobless` used to advance inside both `step_searching` and `step_discouraged`. Because
+`model.step()` measures `n_long_term` between those two calls, that produced two opposite errors:
+an agent re-entering search from discouragement advanced the clock **twice** in one step, and an
+agent exhausting its capital advanced it **zero** times. Every discouragement episode contains
+exactly one of each, so they cancelled exactly, and the published `long_term_share` was never
+affected by them. This was confirmed independently twice: by tracing the step order by hand, and
+by an external check over three 300-month runs finding zero discrepancies at the measurement
+point.
+
+**A first attempt at the repair removed only the double-advance.** It kept the zero-advance on
+exhaustion, which broke the cancellation the old behaviour depended on and made the clock run
+slow. Against an independent elapsed-time reference at the fitted parameters, seed 1001: 3,600 of
+46,814 measurement-point observations were wrong, every one an undercount, ranging from one month
+to fourteen for agents that cycle through discouragement repeatedly. `long_term_share` fell from
+77.089 per cent to 76.957 per cent. The regression test written alongside that attempt asserted
+zero credit on the exhaustion step, so it passed while encoding the defect -- a test that could
+only fail if the code were correct.
+
+**What the repair should have been, and now is.** One credit per elapsed step, applied to every
+agent that is not employed, in a single pass positioned *after* that step's measurement and before
+matching. Position carries as much meaning as count: crediting after measurement is what makes the
+counter mean "completed non-employed months", which is the convention under which a continuously
+unemployed agent reads 11 at the step-12 measurement. Crediting any part of it beforehand would
+count the step still in progress.
+
+Verified two ways. Against an independent elapsed-time reference -- rebuilt from observed state
+transitions only, so it cannot inherit the counter's own defects -- there are now zero mismatches
+across all 46,814 measurement-point observations. And `long_term_share` returns to 77.089 per cent
+at seed 1001, matching the pre-refactor figure exactly, which is what the cancellation argument
+above predicts.
+
+The lesson worth keeping: testing a refactor against the behaviour of the code it replaces is not
+enough when that code's correctness is itself the thing in question. Two offsetting errors look
+like correct behaviour from the outside, and removing one of them looks like an improvement.
+Only an independently constructed reference distinguishes them.
+
+This is the calendar-accounting change only. What the clock should *measure* -- elapsed months
+since last work, or time within a search episode that a pause may or may not break -- is a
+separate, still-open question; see "`Long_term_unempl`'s derivation" above.

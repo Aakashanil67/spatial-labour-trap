@@ -294,22 +294,8 @@ class CityModel(Model):
 
         # 2. Re-entry: discouraged -> searching, given this step's household inflow (locked
         #    commitment 6 -- discouragement is not absorbing).
-        #
-        #    B1's calendar-accounting fix lives here and at stage 5. months_jobless used to
-        #    advance inside both step_discouraged and step_searching, so an agent re-entering
-        #    this step advanced it twice and a newly-discouraged agent (below, stage 3)
-        #    advanced it zero times -- see DECISIONS.md. The single correct advance for every
-        #    agent who was DISCOURAGED coming into this step happens here, before the re-entry
-        #    check can move them to SEARCHING and before this step's measurement (stage 4) --
-        #    exactly where step_discouraged's own increment used to run, so a re-entrant's
-        #    measured value at stage 4 is unchanged. jobless_credited_ids tracks who has already
-        #    been advanced this step, so stage 5 does not advance them again.
         discouraged = self._seekers(SeekerState.DISCOURAGED)
         n_disc_pre = len(discouraged)
-        jobless_credited_ids: set[int] = set()
-        for agent in discouraged:
-            agent.months_jobless += 1
-            jobless_credited_ids.add(agent.unique_id)
         self._activate(discouraged, "step_discouraged")
         n_reentries = n_disc_pre - len(self._seekers(SeekerState.DISCOURAGED))
 
@@ -354,16 +340,26 @@ class CityModel(Model):
         n_long_term = sum(1 for a in searching if a.months_jobless >= LONG_TERM_THRESHOLD_MONTHS)
         self._collect_cell_row(searching)
 
-        # B1's second calendar-accounting credit: every agent in `searching` who was NOT just
-        # credited above (i.e. was already searching, or freshly separated, coming into this
-        # step -- not a discouraged-to-searching re-entrant) advances months_jobless exactly
-        # once here, after this step's own measurement, matching the "start-of-period stock"
-        # convention that measurement already applies to u_t/v_t/l_t/disc_t: a continuously
-        # searching agent's own credit for this step should not be visible until next step's
-        # measurement. This is what step_searching's own increment used to do, before it moved
-        # here to sit alongside stage 2's credit as one unified accounting pass.
-        for agent in searching:
-            if agent.unique_id not in jobless_credited_ids:
+        # B1's calendar-accounting fix: one credit per elapsed step, for every agent that is not
+        # employed, applied here -- after this step's own measurement and before matching.
+        #
+        # months_jobless used to advance inside both step_searching and step_discouraged, so an
+        # agent re-entering search advanced it twice in one step and an agent exhausting its
+        # capital advanced it zero times. Those two errors cancelled over a full discouragement
+        # episode, which is why the published statistic was unaffected. A first attempt at this
+        # fix removed only the double-advance and left the zero-advance in place, which broke
+        # that cancellation and undercounted by up to 14 months for agents that cycle
+        # repeatedly -- caught by checking against an independent elapsed-time reference rather
+        # than against the old implementation. See DECISIONS.md.
+        #
+        # Position matters, not just count. Crediting AFTER measurement is what makes the
+        # counter mean "completed non-employed months", matching the documented convention that
+        # a continuously unemployed agent reads 11 at the step-12 measurement. Crediting any
+        # part of it before measurement would count the in-progress step. Agents hired in this
+        # step's matching (below) have months_jobless reset by resolve_hire afterwards, so
+        # crediting them here and resetting there leaves them at zero either way.
+        for agent in self._seekers():
+            if agent.state is not SeekerState.EMPLOYED:
                 agent.months_jobless += 1
 
         # 5. Trip decisions and payment (the intensity margin, M5). transport_spend is what

@@ -134,11 +134,14 @@ def test_jobless_clock_survives_a_discouragement_cycle():
     assert probe.months_jobless == 15  # exactly one credit, not two
 
 
-def test_calendar_clock_advances_exactly_once_per_step_through_a_full_cycle():
-    """The composed-path regression the double/zero-count defect needed: trace one agent
-    through exhaustion (searching -> discouraged), two steps of continuous discouragement, and
-    re-entry (discouraged -> searching), asserting months_jobless advances by exactly the
-    number of elapsed steps at every point -- never +2, never +0, on the transition steps."""
+def test_calendar_clock_advances_once_per_step_regardless_of_state_transitions():
+    """One credit per elapsed step for a non-employed agent, whatever transitions it makes.
+
+    The defect this guards against had two halves that cancelled: an agent re-entering search
+    advanced the clock twice in one step, and an agent exhausting its capital advanced it zero
+    times. A first attempt at the fix removed only the double-advance, which broke the
+    cancellation and undercounted. The assertions below therefore count elapsed steps directly
+    rather than reproducing either implementation's behaviour."""
     from src.agents import SeekerState
 
     cfg = replace(
@@ -158,35 +161,81 @@ def test_calendar_clock_advances_exactly_once_per_step_through_a_full_cycle():
     probe.search_capital = 0.0  # cannot afford one trip: exhausts on the very next step
     probe.months_jobless = 0
 
-    # Step 1: exhaustion (searching -> discouraged). Zero elapsed-time credit this step, matching
-    # the pre-refactor behaviour Astra's independent trace confirmed at the measurement point --
-    # this step's credit is picked up on the discouraged side starting next step.
+    # Step 1: exhaustion (searching -> discouraged). The step still elapsed, so it still counts.
     model.step()
     assert probe.state is SeekerState.DISCOURAGED
-    assert probe.months_jobless == 0
-
-    # Steps 2 and 3: continuously discouraged, +1 each from the household inflow, still short of
-    # reentry_threshold=0.05 (0.02 + 0.02 = 0.04).
-    model.step()
     assert probe.months_jobless == 1
+
+    # Steps 2 and 3: continuously discouraged. Capital climbs 0.02 per step toward the 0.05
+    # re-entry threshold.
     model.step()
     assert probe.months_jobless == 2
-
-    # Step 4: capital crosses 0.05 this step (0.04 + 0.02 = 0.06), so the agent re-enters. Exactly
-    # one credit this step, not two.
     model.step()
-    assert probe.state is SeekerState.SEARCHING
     assert probe.months_jobless == 3
 
-    # Step 5: ordinary continued searching, +1 from the stage-5 credit alone. Topped up to a
-    # comfortably large capital first -- decide_trips() draws from model.rng, so how much of
-    # step 4's re-entry capital survived into step 5 is not something this test can hand-verify;
-    # what it checks is the stage-5 credit itself, not the trip-affordability arithmetic that
-    # test_jobless_clock_survives_a_discouragement_cycle and the transport-cost tests cover.
+    # Step 4: capital crosses the threshold and the agent re-enters search. One credit, not two.
+    model.step()
+    assert probe.state is SeekerState.SEARCHING
+    assert probe.months_jobless == 4
+
+    # Step 5: ordinary continued searching. Topped up first so trip affordability, which draws
+    # from model.rng, cannot decide the outcome of a clock test.
     probe.search_capital = 5.0
     model.step()
-    assert probe.state is SeekerState.SEARCHING  # comfortably affords a trip, does not exhaust
-    assert probe.months_jobless == 4
+    assert probe.state is SeekerState.SEARCHING
+    assert probe.months_jobless == 5
+
+
+def test_jobless_clock_matches_an_independent_elapsed_time_reference():
+    """The real acceptance check: over a full run, months_jobless at every measurement point
+    must equal a reference clock built only from observed state transitions, which cannot
+    inherit whatever defect months_jobless itself has.
+
+    The reference counts completed steps since each agent's last hire during which it was not
+    employed. That convention -- completed months, excluding the step in progress -- is what
+    makes a continuously unemployed agent read 11 at the step-12 measurement."""
+    from src.agents import JobSeeker, SeekerState
+
+    reference: dict[int, int] = {}
+    mismatches: list[tuple[int, int, int, int]] = []
+
+    orig_collect = CityModel._collect_cell_row
+    orig_resolve_hire = JobSeeker.resolve_hire
+    orig_step = CityModel.step
+
+    def patched_resolve_hire(self):
+        reference[self.unique_id] = 0
+        return orig_resolve_hire(self)
+
+    def patched_collect(self, searching):
+        for agent in searching:
+            expected = reference.get(agent.unique_id, 0)
+            if agent.months_jobless != expected:
+                mismatches.append((self.steps, agent.unique_id, agent.months_jobless, expected))
+        return orig_collect(self, searching)
+
+    def patched_step(self):
+        for agent in self._seekers():
+            reference.setdefault(agent.unique_id, 0)
+        orig_step(self)
+        for agent in self._seekers():
+            if agent.state is not SeekerState.EMPLOYED:
+                reference[agent.unique_id] = reference.get(agent.unique_id, 0) + 1
+
+    CityModel._collect_cell_row = patched_collect
+    JobSeeker.resolve_hire = patched_resolve_hire
+    CityModel.step = patched_step
+    try:
+        CityModel(replace(BASE, n_steps=80)).run()
+    finally:
+        CityModel._collect_cell_row = orig_collect
+        JobSeeker.resolve_hire = orig_resolve_hire
+        CityModel.step = orig_step
+
+    assert not mismatches, (
+        f"{len(mismatches)} measurement points disagree with the independent reference; "
+        f"first five (step, agent, months_jobless, expected): {mismatches[:5]}"
+    )
 
 
 def test_jobless_clock_resets_only_on_hire():
