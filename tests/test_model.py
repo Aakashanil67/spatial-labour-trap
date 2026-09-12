@@ -107,26 +107,86 @@ def test_activation_order_robustness():
 
 
 def test_jobless_clock_survives_a_discouragement_cycle():
-    """The long-term moment's estimand is QLFS's Long_term_unempl, which StatsSA derives from
-    time since the respondent last worked -- a pause in active search does not reset it. The
-    searching-state spell clock (months_in_state) DOES reset on discouraged -> searching
-    re-entry, which is correct for the spell histogram but wrong for this moment: measuring
-    the moment off months_in_state undercounted long-term joblessness in exact proportion to
-    the model's own discouragement churn. See DECISIONS.md, "long_term_share was measuring the
-    wrong clock"."""
+    """The long-term moment's estimand tracks joblessness through a discouragement pause: the
+    searching-state spell clock (months_in_state) resets on discouraged -> searching re-entry,
+    which is correct for the spell histogram but wrong for this moment -- measuring it off
+    months_in_state undercounted long-term joblessness in exact proportion to the model's own
+    discouragement churn. See DECISIONS.md, "long_term_share was measuring the wrong clock".
+
+    B1 moved the increment out of step_discouraged/step_searching and into model.step()'s own
+    accounting pass (see DECISIONS.md, B1), so this is no longer testable by calling
+    step_discouraged() in isolation -- that method no longer touches months_jobless at all.
+    The composed path below (a real model.step() call) is the actual regression guard;
+    test_calendar_clock_advances_exactly_once_per_step_through_a_full_cycle covers the specific
+    double-count/zero-count defect directly."""
     from src.agents import SeekerState
 
-    model = CityModel(BASE)
-    agent = next(iter(model._seekers()))
-    agent.months_jobless = 14
-    agent.months_in_state = 3
-    agent.state = SeekerState.SEARCHING
-    agent.search_capital = 1.0
+    cfg = replace(BASE, n_steps=1, separation_rate=0.0, n_vacancies=0)
+    model = CityModel(cfg)
+    for agent in model._seekers():
+        agent.state = SeekerState.EMPLOYED  # park everyone else out of the searching pool
+    probe = next(iter(model._seekers()))
+    probe.state = SeekerState.DISCOURAGED
+    probe.months_jobless = 14
+    probe.search_capital = cfg.reentry_threshold  # crosses the threshold, re-enters this step
+    model.step()
+    assert probe.state is SeekerState.SEARCHING  # confirms the re-entry actually happened
+    assert probe.months_jobless == 15  # exactly one credit, not two
 
-    agent.months_in_state = 0
-    agent.state = SeekerState.DISCOURAGED  # capital exhaustion: spell clock resets...
-    agent.step_discouraged()
-    assert agent.months_jobless == 15  # ...the jobless clock must not
+
+def test_calendar_clock_advances_exactly_once_per_step_through_a_full_cycle():
+    """The composed-path regression the double/zero-count defect needed: trace one agent
+    through exhaustion (searching -> discouraged), two steps of continuous discouragement, and
+    re-entry (discouraged -> searching), asserting months_jobless advances by exactly the
+    number of elapsed steps at every point -- never +2, never +0, on the transition steps."""
+    from src.agents import SeekerState
+
+    cfg = replace(
+        BASE,
+        n_steps=1,
+        separation_rate=0.0,
+        n_vacancies=0,
+        search_cost_per_trip=0.02,
+        household_inflow=0.02,
+        reentry_threshold=0.05,
+    )
+    model = CityModel(cfg)
+    for agent in model._seekers():
+        agent.state = SeekerState.EMPLOYED
+    probe = next(iter(model._seekers()))
+    probe.state = SeekerState.SEARCHING
+    probe.search_capital = 0.0  # cannot afford one trip: exhausts on the very next step
+    probe.months_jobless = 0
+
+    # Step 1: exhaustion (searching -> discouraged). Zero elapsed-time credit this step, matching
+    # the pre-refactor behaviour Astra's independent trace confirmed at the measurement point --
+    # this step's credit is picked up on the discouraged side starting next step.
+    model.step()
+    assert probe.state is SeekerState.DISCOURAGED
+    assert probe.months_jobless == 0
+
+    # Steps 2 and 3: continuously discouraged, +1 each from the household inflow, still short of
+    # reentry_threshold=0.05 (0.02 + 0.02 = 0.04).
+    model.step()
+    assert probe.months_jobless == 1
+    model.step()
+    assert probe.months_jobless == 2
+
+    # Step 4: capital crosses 0.05 this step (0.04 + 0.02 = 0.06), so the agent re-enters. Exactly
+    # one credit this step, not two.
+    model.step()
+    assert probe.state is SeekerState.SEARCHING
+    assert probe.months_jobless == 3
+
+    # Step 5: ordinary continued searching, +1 from the stage-5 credit alone. Topped up to a
+    # comfortably large capital first -- decide_trips() draws from model.rng, so how much of
+    # step 4's re-entry capital survived into step 5 is not something this test can hand-verify;
+    # what it checks is the stage-5 credit itself, not the trip-affordability arithmetic that
+    # test_jobless_clock_survives_a_discouragement_cycle and the transport-cost tests cover.
+    probe.search_capital = 5.0
+    model.step()
+    assert probe.state is SeekerState.SEARCHING  # comfortably affords a trip, does not exhaust
+    assert probe.months_jobless == 4
 
 
 def test_jobless_clock_resets_only_on_hire():

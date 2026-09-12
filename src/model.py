@@ -26,7 +26,9 @@ JobSeeker and Firm instances once firms exist, so every seeker-only query below 
 from __future__ import annotations
 
 import math
+import random as stdlib_random
 
+import numpy as np
 import pandas as pd
 from mesa import Model
 
@@ -69,6 +71,19 @@ class CityModel(Model):
         self.config = config
         self.cbd_x = 0.0
         self.cbd_y = 0.0
+
+        # Two dedicated random streams, isolated from self.rng and self.random (both consumed by
+        # agent decisions -- decide_trips, search_positions, activation shuffling -- whose draw
+        # count depends on this run's own behaviour). A treatment that changes trip counts shifts
+        # every subsequent self.rng call, so two configs differing only in a treatment parameter
+        # matched at step 1 and diverged from step 2 onward: the shock and the separation hazard
+        # were never actually held in common across paired scenarios, only accidentally aligned
+        # for one step. np.random.SeedSequence(config.seed).spawn(2) derives two independent
+        # child streams from the one run seed, so both remain reproducible and distinct from
+        # self.rng/self.random without introducing a second seed field on Config.
+        _shock_seed, _separation_seed = np.random.SeedSequence(config.seed).spawn(2)
+        self._shock_rng = np.random.default_rng(_shock_seed)
+        self.separation_random = stdlib_random.Random(int(_separation_seed.generate_state(1)[0]))
 
         # AR(1) aggregate productivity shock (M2). log A_t = rho_A * log A_{t-1} + eps. Starts
         # at the deterministic steady state A_0 = 1. With the MVM defaults (rho_A = sigma_A =
@@ -248,7 +263,8 @@ class CityModel(Model):
 
     def _update_productivity_shock(self) -> None:
         cfg = self.config
-        shock = self.rng.normal(0.0, cfg.sigma_A) if cfg.sigma_A > 0 else 0.0
+        # self._shock_rng, not self.rng: see __init__ docstring on the two dedicated streams.
+        shock = self._shock_rng.normal(0.0, cfg.sigma_A) if cfg.sigma_A > 0 else 0.0
         log_a = cfg.rho_A * math.log(self.productivity_shock) + shock
         self.productivity_shock = math.exp(log_a)
 
@@ -278,8 +294,22 @@ class CityModel(Model):
 
         # 2. Re-entry: discouraged -> searching, given this step's household inflow (locked
         #    commitment 6 -- discouragement is not absorbing).
+        #
+        #    B1's calendar-accounting fix lives here and at stage 5. months_jobless used to
+        #    advance inside both step_discouraged and step_searching, so an agent re-entering
+        #    this step advanced it twice and a newly-discouraged agent (below, stage 3)
+        #    advanced it zero times -- see DECISIONS.md. The single correct advance for every
+        #    agent who was DISCOURAGED coming into this step happens here, before the re-entry
+        #    check can move them to SEARCHING and before this step's measurement (stage 4) --
+        #    exactly where step_discouraged's own increment used to run, so a re-entrant's
+        #    measured value at stage 4 is unchanged. jobless_credited_ids tracks who has already
+        #    been advanced this step, so stage 5 does not advance them again.
         discouraged = self._seekers(SeekerState.DISCOURAGED)
         n_disc_pre = len(discouraged)
+        jobless_credited_ids: set[int] = set()
+        for agent in discouraged:
+            agent.months_jobless += 1
+            jobless_credited_ids.add(agent.unique_id)
         self._activate(discouraged, "step_discouraged")
         n_reentries = n_disc_pre - len(self._seekers(SeekerState.DISCOURAGED))
 
@@ -312,15 +342,29 @@ class CityModel(Model):
         v_t = sum(f.vacancies for f in self.firms) if self.firms else cfg.n_vacancies
         l_t = len(self._seekers(SeekerState.EMPLOYED))
         disc_t = len(self._seekers(SeekerState.DISCOURAGED))
-        # months_jobless, NOT months_in_state: QLFS's Long_term_unempl is derived from time
-        # since the respondent last worked, and a discouragement pause doesn't reset that
-        # clock -- measuring off the searching-state spell hid long-term joblessness behind
-        # the model's own discouragement churn (0.0000 measured against 0.53-0.57 actual at
-        # the same calibrated point). See DECISIONS.md, "long_term_share was measuring the
-        # wrong clock". The completed-spell histogram below stays on months_in_state
-        # deliberately: it is a search-spell object, descriptive only, and correct as is.
+        # months_jobless, NOT months_in_state: a discouragement pause doesn't reset it, so it
+        # survives the model's own discouragement churn the way months_in_state (which resets
+        # on every re-entry) cannot -- see DECISIONS.md, "long_term_share was measuring the
+        # wrong clock" (0.0000 measured against 0.53-0.57 actual at the same calibrated point
+        # under the old, months_in_state-based measure). Whether this is the right clock for
+        # what QLFS's Long_term_unempl actually tracks (Q36TIMESEEK, how long trying to find
+        # work) is not yet settled -- see "Long_term_unempl's derivation" and B2. The
+        # completed-spell histogram below stays on months_in_state deliberately: it is a
+        # search-spell object, descriptive only, and correct as is.
         n_long_term = sum(1 for a in searching if a.months_jobless >= LONG_TERM_THRESHOLD_MONTHS)
         self._collect_cell_row(searching)
+
+        # B1's second calendar-accounting credit: every agent in `searching` who was NOT just
+        # credited above (i.e. was already searching, or freshly separated, coming into this
+        # step -- not a discouraged-to-searching re-entrant) advances months_jobless exactly
+        # once here, after this step's own measurement, matching the "start-of-period stock"
+        # convention that measurement already applies to u_t/v_t/l_t/disc_t: a continuously
+        # searching agent's own credit for this step should not be visible until next step's
+        # measurement. This is what step_searching's own increment used to do, before it moved
+        # here to sit alongside stage 2's credit as one unified accounting pass.
+        for agent in searching:
+            if agent.unique_id not in jobless_credited_ids:
+                agent.months_jobless += 1
 
         # 5. Trip decisions and payment (the intensity margin, M5). transport_spend is what
         #    moments.py's transport_budget_share moment sums over the burn-in window --

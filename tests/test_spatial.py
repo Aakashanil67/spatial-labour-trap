@@ -5,6 +5,7 @@ should make the spatial/firm code paths inert.
 
 from __future__ import annotations
 
+import random as stdlib_random
 from dataclasses import replace
 
 import pytest
@@ -390,3 +391,48 @@ def test_traced_agent_state_matches_the_live_agent_at_run_end():
     live_agent = next(a for a in model._seekers() if a.unique_id == agent_id)
     assert last_row["state"] == live_agent.state.name
     assert last_row["search_capital"] == pytest.approx(live_agent.search_capital)
+
+
+# D1: the aggregate productivity shock used to draw from self.rng, the same stream decide_trips
+# and search_positions consume, so a treatment that changes trip counts (like a different
+# transport_cost_rate) shifted every subsequent shock draw -- two paired scenarios matched at
+# step 1 and diverged from step 2 onward. Fixed by giving the shock its own generator, derived
+# from the run seed via np.random.SeedSequence, independent of anything agents do.
+SHOCK_BASE = replace(SPATIAL, rho_A=0.8, sigma_A=0.05, transport_cost_rate=0.05)
+TREATED = replace(SHOCK_BASE, transport_cost_rate=0.0)  # differs only in the treatment parameter
+
+
+def test_productivity_series_is_unaffected_by_a_treatment_that_changes_trip_counts():
+    control = CityModel(SHOCK_BASE).run()
+    treated = CityModel(TREATED).run()
+    # transport_cost_rate materially changes behaviour: assert the runs are not the trivial
+    # identical case that would make this test meaningless.
+    assert control["u"].tolist() != treated["u"].tolist()
+    assert control["productivity_shock"].tolist() == treated["productivity_shock"].tolist()
+
+
+def test_productivity_shock_is_reproducible_under_a_fixed_seed():
+    a = CityModel(SHOCK_BASE).run()
+    b = CityModel(SHOCK_BASE).run()
+    assert a["productivity_shock"].tolist() == b["productivity_shock"].tolist()
+
+
+def test_productivity_shock_differs_from_a_different_seed():
+    other_seed = replace(SHOCK_BASE, seed=SHOCK_BASE.seed + 1)
+    a = CityModel(SHOCK_BASE).run()
+    b = CityModel(other_seed).run()
+    assert a["productivity_shock"].tolist() != b["productivity_shock"].tolist()
+
+
+def test_separation_random_is_isolated_from_model_random():
+    """The separation hazard (agents.py step_employed) now draws from model.separation_random,
+    a dedicated stdlib Random instance seeded from config.seed alone, not model.random (which
+    activation shuffling and the ticket/firm-order shuffles also consume, and whose draw count
+    depends on this run's own trip/matching behaviour). Confirms two configs sharing a seed but
+    differing in a behaviour-affecting parameter get an identical separation stream -- unlike
+    model.random, whose later draws already diverge between such configs mid-run."""
+    a = CityModel(SHOCK_BASE)
+    b = CityModel(TREATED)
+    assert a.separation_random is not a.random
+    assert isinstance(a.separation_random, stdlib_random.Random)
+    assert a.separation_random.random() == b.separation_random.random()

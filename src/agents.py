@@ -49,13 +49,15 @@ class JobSeeker(Agent):
         self.trips_this_step = 0
         self.belief_inactive_this_step = False
         self.months_in_state = 0  # spell length in the current state, for the spell histogram
-        # Time since last employed -- the clock QLFS's Long_term_unempl is actually derived
-        # from. Unlike months_in_state it does NOT reset on a discouraged -> searching cycle:
-        # a respondent who paused searching for two months doesn't reset their reported
-        # duration, and neither does this counter. Resets only on hire. Measuring the
-        # long-term moment off months_in_state instead of this clock hid years of joblessness
-        # behind the model's own discouragement churn -- see DECISIONS.md, "long_term_share
-        # was measuring the wrong clock".
+        # Time since last employed. Unlike months_in_state it does NOT reset on a discouraged ->
+        # searching cycle -- resets only on hire. Measuring the long-term moment off
+        # months_in_state instead of this clock hid years of joblessness behind the model's own
+        # discouragement churn -- see DECISIONS.md, "long_term_share was measuring the wrong
+        # clock". That entry's own claim about what QLFS's Long_term_unempl is derived from was
+        # wrong, corrected in "Long_term_unempl's derivation: the caution above was right, and
+        # the reading was wrong" -- it tracks how long the respondent has been trying to find
+        # work (Q36TIMESEEK), not time since last worked, and whether the tolerance this counter
+        # gives to a discouragement pause is the right one for that is not yet decided (see B2).
         self.months_jobless = 0
 
         # Week 2 spatial fields. home_x/home_y default to the CBD centre (0, 0 in the model's
@@ -149,7 +151,10 @@ class JobSeeker(Agent):
         self.belief_inactive_this_step = self.trips_this_step == 0
         self.search_capital -= self.trips_this_step * self.cost_per_trip
         self.months_in_state += 1
-        self.months_jobless += 1
+        # months_jobless is NOT advanced here any more -- see model.py's step() for why. This
+        # method used to increment it directly, and step_discouraged did too, so an agent
+        # re-entering search this step advanced the clock twice and a newly-discouraged agent
+        # advanced it zero times in the same step. See B1 in DECISIONS.md.
 
     def search_positions(self) -> list[tuple[float, float]]:
         """One effective search position per trip made this step, for the per-firm
@@ -180,15 +185,21 @@ class JobSeeker(Agent):
         cfg = self.model.config
         self.search_capital += cfg.household_inflow
         self.months_in_state += 1
-        self.months_jobless += 1  # still jobless -- QLFS's clock keeps running through a pause
+        # months_jobless is NOT advanced here any more -- see the step_searching docstring above
+        # and model.py's step() for the single, unified accounting point.
         if self.search_capital >= cfg.reentry_threshold:
             self.state = SeekerState.SEARCHING
             self.months_in_state = 0
 
     def step_employed(self) -> None:
         """Exogenous separation (M1). Without this, employment is absorbing: u -> 0 and the
-        matching function has no (u, v, m) variation left to fit."""
-        if self.random.random() < self.model.config.separation_rate:
+        matching function has no (u, v, m) variation left to fit.
+
+        Draws from model.separation_random, not self.random (model.random): self.random is
+        also consumed by activation shuffling and the ticket/firm-order shuffles in model.py,
+        whose draw counts depend on this run's own employment level -- exactly the shared-stream
+        problem the shock stream was split out of. See model.py's CityModel.__init__ docstring."""
+        if self.model.separation_random.random() < self.model.config.separation_rate:
             self.state = SeekerState.SEARCHING
             self.months_in_state = 0
 
