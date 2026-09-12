@@ -1,0 +1,116 @@
+{
+  "command": "python -m scripts.diagnose_horizon --config configs/baseline.yaml --params results/published/calibration_result.json --seeds 1001:1003 --steps 1200 --initial-capital-multiplier 0.5,1,2 --mixed-state-donor-steps 600 --output-dir results/review_v2/temporal_p1_2_initcond",
+  "config_path": "configs/baseline.yaml",
+  "params_path": "results/published/calibration_result.json",
+  "seeds": [
+    1001,
+    1002,
+    1003
+  ],
+  "steps": 1200,
+  "burn_in_steps": 50,
+  "config_labels": [
+    "capital_0.5x",
+    "capital_1.0x",
+    "capital_2.0x"
+  ],
+  "code_fingerprint": "4ee76189b2bf9cef",
+  "resource_balance": {
+    "total_agent_steps_checked": 10800000,
+    "total_violations": 0,
+    "max_discrepancy": 0.0,
+    "reconciled_exactly": true
+  },
+  "per_run_balance": {
+    "capital_0.5x/1001": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_0.5x/1002": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_0.5x/1003": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_1.0x/1001": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_1.0x/1002": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_1.0x/1003": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_2.0x/1001": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_2.0x/1002": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_2.0x/1003": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_0.5x_mixed_state/1001": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_0.5x_mixed_state/1002": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_0.5x_mixed_state/1003": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_1.0x_mixed_state/1001": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_1.0x_mixed_state/1002": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_1.0x_mixed_state/1003": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_2.0x_mixed_state/1001": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_2.0x_mixed_state/1002": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    },
+    "capital_2.0x_mixed_state/1003": {
+      "n_violations": 0,
+      "max_discrepancy": 0.0,
+      "n_agent_steps_checked": 600000
+    }
+  }
+}

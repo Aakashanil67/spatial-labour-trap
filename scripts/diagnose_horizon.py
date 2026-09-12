@@ -88,10 +88,41 @@ def _first_seeker_ids_by_quartile(config: Config, n_per_quartile: int = 1) -> tu
     return tuple(chosen)
 
 
-def _run_instrumented(config: Config) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    """Runs one simulation with external instrumentation for exactly what the committed history
-    does not already record: ever-employed status per agent, and the resource-balance components
-    (credited inflow, paid search cost) needed to reconcile opening/closing capital every step.
+_SEEKER_DYNAMIC_FIELDS = ("state", "search_capital", "months_in_state", "months_jobless")
+_FIRM_DYNAMIC_FIELDS = ("vacancies", "hires_this_step", "quiet_streak", "fill_prob_estimate")
+
+
+def _snapshot_dynamic_state(model: CityModel) -> dict:
+    """Captures only the state that changes step-to-step (agents.py's __init__ methods list
+    exactly these fields as mutated after construction). Structural fields -- home_x/home_y,
+    distance_to_cbd, wealth_quartile, cost_per_trip for seekers; x, y for firms -- are left
+    alone, since a same-seed donor and recipient already draw them identically at construction
+    and re-copying them would be redundant, not wrong."""
+    return {
+        "seekers": {
+            a.unique_id: {f: getattr(a, f) for f in _SEEKER_DYNAMIC_FIELDS}
+            for a in model._seekers()
+        },
+        "firms": {
+            f.unique_id: {fld: getattr(f, fld) for fld in _FIRM_DYNAMIC_FIELDS} for f in model.firms
+        },
+    }
+
+
+def _apply_dynamic_state(model: CityModel, snapshot: dict) -> None:
+    for agent in model._seekers():
+        for field, value in snapshot["seekers"][agent.unique_id].items():
+            setattr(agent, field, value)
+    for firm in model.firms:
+        for field, value in snapshot["firms"][firm.unique_id].items():
+            setattr(firm, field, value)
+
+
+def _instrument_and_run(model: CityModel) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """Runs an already-constructed model with external instrumentation for exactly what the
+    committed history does not already record: ever-employed status per agent, and the
+    resource-balance components (credited inflow, paid search cost) needed to reconcile
+    opening/closing capital every step.
 
     Returns (history, capital_panel, balance_result). `history` is the model's own recorded
     per-step aggregate (u, l, discouraged, m, n_separations, n_reentries, n_belief_inactive,
@@ -101,6 +132,10 @@ def _run_instrumented(config: Config) -> tuple[pd.DataFrame, pd.DataFrame, dict]
     `capital_panel` is one row per (step, agent_id): capital, state, ever_employed -- built here
     since nothing in the committed code records this breakdown. `balance_result` reports whether
     the resource identity held exactly and, if not, the largest violation found.
+
+    Taking a constructed model (rather than a config) lets a mixed-state-transplant recipient
+    -- already built, with donor state applied -- reuse the identical instrumentation and
+    balance check the plain sweep uses, instead of a second, divergent implementation.
 
     The fixed-individual trace (config.trace_agent_ids) is deliberately not captured here: this
     function runs every seed of the main sweep, and the trace is wanted for one illustrative run
@@ -159,7 +194,6 @@ def _run_instrumented(config: Config) -> tuple[pd.DataFrame, pd.DataFrame, dict]
     JobSeeker.step_discouraged = patched_step_discouraged
     CityModel.step = patched_step
     try:
-        model = CityModel(config)
         history = model.run()
     finally:
         JobSeeker.resolve_hire = orig_resolve_hire
@@ -181,11 +215,39 @@ def _run_instrumented(config: Config) -> tuple[pd.DataFrame, pd.DataFrame, dict]
     balance_result = {
         "n_violations": len(balance_violations),
         "max_discrepancy": max((d for _, _, d in balance_violations), default=0.0),
-        "n_agent_steps_checked": config.n_agents * config.n_steps,
+        "n_agent_steps_checked": model.config.n_agents * model.config.n_steps,
     }
 
     capital_df = pd.DataFrame(capital_rows)
     return history, capital_df, balance_result
+
+
+def _run_instrumented(config: Config) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    return _instrument_and_run(CityModel(config))
+
+
+def _run_mixed_state_instrumented(
+    config: Config, donor_steps: int
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """Builds a 'mature' initial condition by running a same-seed donor model for `donor_steps`
+    steps, snapshotting its dynamic state, then transplanting that state into a freshly
+    constructed recipient (same seed, same full config -- so structural draws: home locations,
+    wealth quartiles, firm positions, are identical to the donor's by construction, not copied)
+    before running the recipient for its own full `config.n_steps` horizon under instrumentation.
+
+    The recipient's step counter restarts at 1 and its RNG streams are fresh from their own
+    initial state -- deliberately: this asks whether starting the *observed* window already in
+    a mixed (some discouraged, some low-capital) population changes the post-burn-in outcome
+    relative to the standard all-searching, full-capital start, holding the seed (and therefore
+    the exact draw sequence applied from step 1) fixed. It does not attempt to reproduce what
+    the donor itself would have done next -- that is not the question being asked."""
+    donor = CityModel(replace(config, n_steps=donor_steps))
+    donor.run()
+    snapshot = _snapshot_dynamic_state(donor)
+
+    recipient = CityModel(config)
+    _apply_dynamic_state(recipient, snapshot)
+    return _instrument_and_run(recipient)
 
 
 def _windows(n_steps: int, burn_in: int) -> list[tuple[int, int]]:
@@ -298,6 +360,23 @@ def main(argv: list[str] | None = None) -> int:
         help="comma list of household_inflow overrides, one config_label per value, e.g. "
         "0.004,0.008,0.016. Omit to run --config's own value once, labelled 'base'.",
     )
+    parser.add_argument(
+        "--initial-capital-multiplier",
+        default=None,
+        help="comma list of multipliers on --config/--params' initial_search_capital, one "
+        "config_label per value, e.g. 0.5,1,2. Combines with --household-inflow if both are "
+        "given (every inflow value crossed with every multiplier). Omit to leave it at its "
+        "base value.",
+    )
+    parser.add_argument(
+        "--mixed-state-donor-steps",
+        type=int,
+        default=None,
+        help="if given, additionally runs one 'mixed_state' config_label per base config: a "
+        "same-seed donor is run for this many steps, its dynamic agent/firm state is "
+        "transplanted into a freshly constructed recipient, which is then run for the full "
+        "--steps horizon under the same instrumentation as every other arm.",
+    )
     parser.add_argument("--output-dir", required=True)
     args = parser.parse_args(argv)
 
@@ -309,11 +388,27 @@ def main(argv: list[str] | None = None) -> int:
     burn_in = base_config.burn_in_steps
 
     seeds = _parse_seed_spec(args.seeds)
-    if args.household_inflow:
-        inflow_values = [float(x) for x in args.household_inflow.split(",")]
-        configs = {f"inflow_{v}": replace(base_config, household_inflow=v) for v in inflow_values}
-    else:
-        configs = {"base": base_config}
+
+    inflow_values = (
+        [float(x) for x in args.household_inflow.split(",")] if args.household_inflow else [None]
+    )
+    capital_multipliers = (
+        [float(x) for x in args.initial_capital_multiplier.split(",")]
+        if args.initial_capital_multiplier
+        else [None]
+    )
+    configs: dict[str, Config] = {}
+    for inflow in inflow_values:
+        for mult in capital_multipliers:
+            cfg = base_config
+            label_parts = []
+            if inflow is not None:
+                cfg = replace(cfg, household_inflow=inflow)
+                label_parts.append(f"inflow_{inflow}")
+            if mult is not None:
+                cfg = replace(cfg, initial_search_capital=base_config.initial_search_capital * mult)
+                label_parts.append(f"capital_{mult}x")
+            configs["_".join(label_parts) if label_parts else "base"] = cfg
 
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -340,6 +435,32 @@ def main(argv: list[str] | None = None) -> int:
             all_time_series.append(history)
             all_window_summaries.append(build_window_summary(history, config_label, seed, burn_in))
             all_capital_summaries.append(build_capital_summary(capital_df, config_label, seed))
+
+    if args.mixed_state_donor_steps is not None:
+        for config_label, cfg in configs.items():
+            mixed_label = f"{config_label}_mixed_state" if config_label != "base" else "mixed_state"
+            for seed in seeds:
+                run_cfg = replace(cfg, seed=seed)
+                history, capital_df, balance_result = _run_mixed_state_instrumented(
+                    run_cfg, args.mixed_state_donor_steps
+                )
+                balance_results[f"{mixed_label}/{seed}"] = balance_result
+
+                n = history["u"] + history["l"] + history["discouraged"]
+                history = history.assign(
+                    config_label=mixed_label,
+                    seed=seed,
+                    employment_share_step=history["l"] / n,
+                    broad_inactive_share_step=(
+                        history["discouraged"] + history["n_belief_inactive"]
+                    )
+                    / n,
+                )
+                all_time_series.append(history)
+                all_window_summaries.append(
+                    build_window_summary(history, mixed_label, seed, burn_in)
+                )
+                all_capital_summaries.append(build_capital_summary(capital_df, mixed_label, seed))
 
     time_series = pd.concat(all_time_series, ignore_index=True)
     window_summary = pd.concat(all_window_summaries, ignore_index=True)
