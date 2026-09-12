@@ -238,6 +238,237 @@ def test_jobless_clock_matches_an_independent_elapsed_time_reference():
     )
 
 
+def _reference_mismatches(config: Config) -> list[tuple[int, int, int, int]]:
+    """Runs config once, comparing months_jobless against the same independent reference used
+    above, and returns every (step, agent, months_jobless, expected) disagreement found. Factored
+    out so several configurations and code variants can be checked against the identical
+    reference logic, rather than each carrying its own copy."""
+    from src.agents import JobSeeker, SeekerState
+
+    reference: dict[int, int] = {}
+    mismatches: list[tuple[int, int, int, int]] = []
+
+    orig_collect = CityModel._collect_cell_row
+    orig_resolve_hire = JobSeeker.resolve_hire
+    orig_step = CityModel.step
+
+    def patched_resolve_hire(self):
+        reference[self.unique_id] = 0
+        return orig_resolve_hire(self)
+
+    def patched_collect(self, searching):
+        for agent in searching:
+            expected = reference.get(agent.unique_id, 0)
+            if agent.months_jobless != expected:
+                mismatches.append((self.steps, agent.unique_id, agent.months_jobless, expected))
+        return orig_collect(self, searching)
+
+    def patched_step(self):
+        for agent in self._seekers():
+            reference.setdefault(agent.unique_id, 0)
+        orig_step(self)
+        for agent in self._seekers():
+            if agent.state is not SeekerState.EMPLOYED:
+                reference[agent.unique_id] = reference.get(agent.unique_id, 0) + 1
+
+    CityModel._collect_cell_row = patched_collect
+    JobSeeker.resolve_hire = patched_resolve_hire
+    CityModel.step = patched_step
+    try:
+        CityModel(config).run()
+    finally:
+        CityModel._collect_cell_row = orig_collect
+        JobSeeker.resolve_hire = orig_resolve_hire
+        CityModel.step = orig_step
+
+    return mismatches
+
+
+def test_jobless_clock_matches_reference_across_seeds_and_a_repeated_discouragement_config():
+    """P0.2: the single-seed check above is not enough on its own -- extend to several seeds and
+    to a configuration engineered to cycle agents through discouragement repeatedly (high search
+    cost relative to capital, slow household inflow), since that is exactly the path the original
+    defect corrupted and a config that rarely discourages anyone would not exercise it."""
+    repeated_discouragement_cfg = replace(
+        BASE,
+        n_agents=100,
+        n_steps=120,
+        search_cost_per_trip=0.15,  # expensive relative to initial_search_capital=1.0
+        household_inflow=0.01,  # slow recovery -- many steps spent discouraged per episode
+        reentry_threshold=0.08,
+        separation_rate=0.05,
+    )
+    for seed in (1, 2, 3, 4, 5):
+        cfg = replace(repeated_discouragement_cfg, seed=seed)
+        mismatches = _reference_mismatches(cfg)
+        assert not mismatches, (
+            f"seed {seed}: {len(mismatches)} mismatches, first three: {mismatches[:3]}"
+        )
+
+
+def test_continuous_search_reads_eleven_completed_months_at_the_step_twelve_measurement():
+    """The documented observation convention, checked directly rather than inferred: a
+    continuously searching agent's months_jobless reads 11 at the step-12 measurement and 12 at
+    the step-13 measurement -- the first step at which it is classified long-term, since
+    LONG_TERM_THRESHOLD_MONTHS is 12 and 11 < 12 <= 12."""
+    from src.model import LONG_TERM_THRESHOLD_MONTHS
+
+    assert LONG_TERM_THRESHOLD_MONTHS == 12
+
+    cfg = replace(BASE, n_steps=1, separation_rate=0.0, n_vacancies=0, n_agents=50)
+    model = CityModel(cfg)
+    probe = next(iter(model._seekers()))
+    probe.search_capital = 1000.0  # never exhausts, never discouraged, always searching
+
+    measured_at_step: dict[int, int] = {}
+    orig_collect = CityModel._collect_cell_row
+
+    def patched_collect(self, searching):
+        measured_at_step[self.steps] = probe.months_jobless
+        return orig_collect(self, searching)
+
+    CityModel._collect_cell_row = patched_collect
+    try:
+        for _ in range(13):
+            model.step()
+    finally:
+        CityModel._collect_cell_row = orig_collect
+
+    assert measured_at_step[12] == 11
+    assert measured_at_step[13] == 12
+    assert 11 < LONG_TERM_THRESHOLD_MONTHS <= 12  # confirms this is the actual classification edge
+
+
+def _reference_mismatches_under_variant(
+    config: Config, step_searching_credit: int, step_discouraged_credit: int
+) -> list[tuple[int, int, int, int]]:
+    """Reproduces a historical months_jobless variant by monkeypatch, then runs it through the
+    same independent reference check the corrected implementation passes.
+
+    The corrected model.step() applies one unconditional credit per elapsed step to every
+    non-employed agent (see model.py). To emulate a variant where the credit instead lived
+    inside step_searching/step_discouraged with different (possibly wrong) per-call amounts,
+    this cancels that unconditional credit exactly -- subtracting 1 from every currently
+    non-employed agent immediately after each step() call, which is the whole and only effect
+    the model-level loop has -- and then applies the requested per-method credit amounts
+    instead. This is precise, not approximate: the corrected loop's effect is fully known and
+    unconditional, so cancelling it exactly is not a source of error in what remains.
+
+    step_searching_credit=1, step_discouraged_credit=1 reproduces the pre-refactor
+    implementation, expected to PASS this check: its double-advance on re-entry and
+    zero-advance on exhaustion cancel by the time of measurement.
+
+    step_searching_credit=0, step_discouraged_credit=1 reproduces the broken half-fix (the
+    double-advance removed, the zero-advance left in place), expected to FAIL: removing only
+    one side of the cancellation leaves an undercount.
+
+    Cancellation detail that matters: the corrected credit loop runs on the FULL non-employed
+    population at one exact mid-step instant (after separations/re-entry/exhaustion resolve,
+    before matching) -- not the population non-employed at the very start or end of step().
+    An agent that separates and is not rehired in the same step, for instance, is non-employed
+    at that mid-step instant but was employed at the step's start, so a naive before/after
+    snapshot would miss it. `_collect_cell_row` is called at exactly that instant in the real
+    step(), immediately before the credit loop runs, so hooking it (and querying the model's
+    own live DISCOURAGED set at that same moment, since `_collect_cell_row` is only handed the
+    SEARCHING half) gives the exact population to cancel, not an approximation of it."""
+    from src.agents import JobSeeker, SeekerState
+
+    reference: dict[int, int] = {}
+    mismatches: list[tuple[int, int, int, int]] = []
+    to_cancel: list = []
+
+    orig_collect = CityModel._collect_cell_row
+    orig_resolve_hire = JobSeeker.resolve_hire
+    orig_step_searching = JobSeeker.step_searching
+    orig_step_discouraged = JobSeeker.step_discouraged
+    orig_step = CityModel.step
+
+    def patched_resolve_hire(self):
+        reference[self.unique_id] = 0
+        return orig_resolve_hire(self)
+
+    def patched_collect(self, searching):
+        for agent in searching:
+            expected = reference.get(agent.unique_id, 0)
+            if agent.months_jobless != expected:
+                mismatches.append((self.steps, agent.unique_id, agent.months_jobless, expected))
+        # The exact population the real credit loop is about to apply to: SEARCHING (handed in
+        # here) plus whoever is DISCOURAGED at this same instant, queried live.
+        to_cancel.clear()
+        to_cancel.extend(searching)
+        to_cancel.extend(self._seekers(SeekerState.DISCOURAGED))
+        return orig_collect(self, searching)
+
+    def variant_step_searching(self):
+        orig_step_searching(self)
+        self.months_jobless += step_searching_credit
+
+    def variant_step_discouraged(self):
+        self.months_jobless += step_discouraged_credit
+        orig_step_discouraged(self)
+
+    def patched_step(self):
+        for agent in self._seekers():
+            reference.setdefault(agent.unique_id, 0)
+        orig_step(self)
+        # Cancel the corrected model-level credit exactly, on exactly the population it applied
+        # to (captured by patched_collect above, during this same orig_step call) -- excluding
+        # anyone hired later in this same step. resolve_hire already reset such an agent's
+        # counter to 0 chronologically before this line runs; subtracting further would corrupt
+        # that reset into a spurious -1, which has nothing to do with the variant under test.
+        for agent in to_cancel:
+            if agent.state is not SeekerState.EMPLOYED:
+                agent.months_jobless -= 1
+        for agent in self._seekers():
+            if agent.state is not SeekerState.EMPLOYED:
+                reference[agent.unique_id] = reference.get(agent.unique_id, 0) + 1
+
+    CityModel._collect_cell_row = patched_collect
+    JobSeeker.resolve_hire = patched_resolve_hire
+    JobSeeker.step_searching = variant_step_searching
+    JobSeeker.step_discouraged = variant_step_discouraged
+    CityModel.step = patched_step
+    try:
+        CityModel(config).run()
+    finally:
+        CityModel._collect_cell_row = orig_collect
+        JobSeeker.resolve_hire = orig_resolve_hire
+        JobSeeker.step_searching = orig_step_searching
+        JobSeeker.step_discouraged = orig_step_discouraged
+        CityModel.step = orig_step
+
+    return mismatches
+
+
+def test_reference_check_distinguishes_the_historical_defect_from_the_broken_half_fix():
+    repeated_discouragement_cfg = replace(
+        BASE,
+        n_agents=60,
+        n_steps=100,
+        search_cost_per_trip=0.15,
+        household_inflow=0.01,
+        reentry_threshold=0.08,
+        separation_rate=0.05,
+        seed=11,
+    )
+
+    historical = _reference_mismatches_under_variant(
+        repeated_discouragement_cfg, step_searching_credit=1, step_discouraged_credit=1
+    )
+    assert not historical, (
+        f"the pre-refactor implementation was expected to pass (its two errors cancel at "
+        f"measurement), but got {len(historical)} mismatches: {historical[:3]}"
+    )
+
+    broken_half_fix = _reference_mismatches_under_variant(
+        repeated_discouragement_cfg, step_searching_credit=0, step_discouraged_credit=1
+    )
+    assert broken_half_fix, (
+        "the broken half-fix (double-advance removed, zero-advance retained) was expected to "
+        "undercount and fail this check, but it passed -- the check is not discriminating"
+    )
+
+
 def test_jobless_clock_resets_only_on_hire():
     model = CityModel(BASE)
     agent = next(iter(model._seekers()))
