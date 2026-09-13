@@ -1,0 +1,50 @@
+{
+  "_note": "Built from a desk audit of notebooks/moments/01-04 (this repo). No raw microdata file hash could be computed in this environment -- THESIS_DATA_ROOT is unset here and the underlying .dta files are restricted, DataFirst-licensed data that is never committed to this repository (see data/README.md). 'version' below is the DataFirst release folder/file name already embedded in each notebook's own path constants, which is the only version identifier available without live data access. Whoever next runs these notebooks with THESIS_DATA_ROOT set should compute and record a real sha256 for each file used, replacing the null hash fields below.",
+  "sources": [
+    {
+      "producer": "Statistics South Africa",
+      "distributor": "DataFirst",
+      "dataset": "Quarterly Labour Force Survey (QLFS)",
+      "licence_tier": "Public use (CC-BY), per paper/notes/prompt-0.2-licence-check.md",
+      "files": [
+        {"quarter": "2025-Q2", "version": "qlfs-2025-q2-v1", "filename": "qlfs-2025-q2-v1.dta", "sha256": null},
+        {"quarter": "2025-Q3", "version": "qlfs-2025-03", "filename": "QLFS202503.dta", "sha256": null},
+        {"quarter": "2025-Q4", "version": "qlfs-2025-q4-v1", "filename": "qlfs-2025-q4-v1.dta", "sha256": null},
+        {"quarter": "2026-Q1", "version": "qlfs-2026-q1-v1", "filename": "qlfs-2026-q1-v1.dta", "sha256": null}
+      ],
+      "used_by_notebooks": ["01_discouraged_share.ipynb", "03_long_term_share_and_separation_rate.ipynb"],
+      "used_by_moments": ["discouraged_share", "long_term_share"],
+      "design_variable_audit": "Notebook 03 searched every quarter's Stata variable names AND labels for rotation-group, PSU, cluster, or wave indicators; none found beyond Stratum. Confirmed for these same 4 files, not assumed to extend to any other QLFS release.",
+      "geography_documented": false,
+      "missingness_documented": false
+    },
+    {
+      "producer": "Statistics South Africa",
+      "distributor": "DataFirst",
+      "dataset": "National Household Travel Survey (NHTS) 2020",
+      "licence_tier": "Public use (CC-BY), per paper/notes/prompt-0.2-licence-check.md",
+      "files": [
+        {"version": "nhts-2020-v1", "filename": "nhts-2020-person.dta", "sha256": null}
+      ],
+      "used_by_notebooks": ["02_transport_budget_share.ipynb"],
+      "used_by_moments": ["transport_budget_share"],
+      "design_variable_audit": "Not run for this dataset -- notebook 02 does not check for a PSU/cluster/rotation field the way notebook 03 does for QLFS.",
+      "geography_documented": false,
+      "missingness_documented": "partial -- per-mode cost sentinels (Unspecified vs Not applicable) are handled but conflated (both treated as zero cost); see target_dictionary.csv's open_audit_findings for transport_budget_share."
+    },
+    {
+      "producer": "Baez, J. and Kshirsagar, V.",
+      "distributor": "World Bank (Policy Research Working Paper 11285)",
+      "dataset": "South Africa's Fragmented Cities: The Unequal Burden of Labor Market Frictions (2026)",
+      "licence_tier": "not applicable -- published table, digitised by hand from the PDF, not a licensed microdata extract",
+      "files": [
+        {"version": "Table 5b, p.38 printed / p.39 of 50 in the PDF", "filename": "not applicable (no file committed or downloaded)", "sha256": null}
+      ],
+      "used_by_notebooks": ["04_distance_gradient_slope.ipynb"],
+      "used_by_moments": ["distance_gradient_slope"],
+      "design_variable_audit": "not applicable",
+      "geography_documented": true,
+      "missingness_documented": "not applicable"
+    }
+  ]
+}
