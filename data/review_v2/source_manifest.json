@@ -44,7 +44,8 @@
       "used_by_moments": ["distance_gradient_slope"],
       "design_variable_audit": "not applicable",
       "geography_documented": true,
-      "missingness_documented": "not applicable"
+      "missingness_documented": "not applicable",
+      "denominator_check": "CONFIRMED against the source text (Literature/baez_full.txt in the thesis repo, lines 799-801 and Table 5b's own title, p.38 printed): the dependent variable is 'the share of working-age adults employed' -- a working-age POPULATION denominator, not a labour-force one. This was previously an open question in target_dictionary.csv; verified directly against the paper on 2026-09-13, not left as an unconfirmed inference from the table title alone."
     }
   ]
 }
