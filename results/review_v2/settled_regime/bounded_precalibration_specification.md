@@ -1,11 +1,15 @@
 # Bounded pre-calibration specification
 
-Presented before any further pilot implementation, per Aakash's instruction of 2026-09-13. This
-is a design document, not new code: sections 1-3 correct and re-verify prior analysis (already
-rerun, with real corrected numbers below); section 4 specifies a redesigned convergence-validation
-method that has **not been built or run**; section 5 sets the validation discipline that method
-must follow. Nothing here is integrated into `calibrate.py`, and `firm_kappa`'s calibration bounds
-stay at (0.2, 2.0) -- kept, not narrowed for computational convenience.
+Presented before any further pilot implementation, per Aakash's instruction of 2026-09-13,
+updated the same day once Aakash reviewed it and approved one bounded development round.
+Status as of this revision: sections 1-3 corrected and re-verified against real data; section 4's
+redesigned convergence rule is **built, corrected once more after an independently-found
+development failure, and verified against both the existing development trajectories and a
+fresh capital-diagnostics collection pass -- all four quantitative development criteria pass**;
+section 5 proposes the held-out validation design, **not yet launched**, pending confirmation
+given its added cost; section 6 specifies unresolved-candidate handling for an eventual
+integrated search. Nothing here is integrated into `calibrate.py`, and `firm_kappa`'s calibration
+bounds stay at (0.2, 2.0) -- kept, not narrowed for computational convenience.
 
 ---
 
@@ -155,68 +159,163 @@ recommendation, choosing a different window, or a different weighting scheme -- 
 information matrix and can change which direction (if any) is poorly identified. None of this
 claims a parameter is intrinsically unidentifiable outside this specific setup.
 
+### 3b. Reassessed against the retained, corrected 3-moment set -- DECIDED: `distance_gradient_slope` removed from fitted targets
+
+Aakash chose option 1 from section 2: `distance_gradient_slope` is removed from the fitted
+target set and retained only as a qualitative external benchmark (explicitly *not* described as
+independent quantitative validation, given the confirmed population/labour-force mismatch).
+Reassessing identification against the retained three moments (`discouraged_share`,
+`transport_budget_share`, `long_term_share`) -- same fitted point, same settled window, same
+`CALIBRATION_SEEDS`/`WEIGHT_SEEDS`, computed by slicing `MOMENT_KEYS` down to the retained three
+before rebuilding `data_cov`/`sim_cov`/the weight matrix (a diagnostic-only slice; `calibrate.py`
+itself is untouched):
+
+| | 4-moment set (with `distance_gradient_slope`) | 3-moment set (retained only) |
+| --- | --- | --- |
+| rescaled condition number | 122,356 | 835,641 |
+| `firm_radius` Jacobian entries (3 moments) | -- | 0.0008, 0.0003, 0.0053 |
+| smallest eigenvector, `firm_radius` component | 0.999 | 0.999 |
+
+**`firm_radius` is not merely weakly identified by the retained set -- it is identified by
+essentially none of it.** `distance_gradient_slope` was the *only* moment carrying any signal
+about `firm_radius` in the original 4-moment sensitivity table (section 3 of the settled-regime
+assessment); with it removed, `firm_radius`'s Jacobian entries against all three retained
+moments are three orders of magnitude smaller than `search_cost_per_trip`'s or `firm_kappa`'s,
+and the condition number worsens by roughly 7x. This is the expected, mechanical consequence of
+removing the one moment that gave this parameter any traction, not a new finding about the
+retained moments themselves.
+
+**Recommendation: fix `firm_radius` at 2.5, report a sensitivity range, do not carry the old
+fitted value forward.** Three reasons, not one: (a) the old fitted value (1.6411) was chosen to
+fit `distance_gradient_slope`, a moment no longer in the target set -- carrying it forward would
+silently keep that moment's influence after removing it from the objective it influenced; (b)
+2.5 is `configs/baseline.yaml`'s own pre-calibration default, not a value invented for this
+recommendation; (c) 2.5 sits at the midpoint of the range where `firm_radius` has *any* behavioural
+effect at all -- below roughly 1.0 the catchment starts binding meaningfully, above roughly 4.0
+(`cbd_radius`'s diameter) every firm is reachable from every search position and the parameter
+saturates (`DECISIONS.md`, "firm_radius=4.1 and 6.0 produced identical histories"). Sensitivity
+range: report the retained three moments and, once it exists, the policy comparison's headline
+outcome across `firm_radius` in {1.0, 1.75, 2.5, 3.25, 4.0} -- the original 4-moment sensitivity
+table already showed the retained moments barely move across this range (`discouraged_share`
+0.3618-0.3621), so this sweep is expected to demonstrate robustness rather than to select a
+value, and should be reported as such. One check not yet done: whether `firm_radius` affects
+`employment_share` through the vacancy-constrained mechanism P1.1 found (vacancies, not searcher
+count, set the hire rate) -- relevant to the future policy engine, not resolved here.
+
 ---
 
-## 4. Redesigned convergence-validation method -- specification only, not built
+## 4. Redesigned convergence-validation method -- second correction, development-verified
 
-The first pilot's rule failed for two reasons (recorded in `DECISIONS_PENDING.md`): a
-cross-sectional moment's own noise blocked the fast candidate, and a small absolute step didn't
-distinguish true convergence from a not-yet-accelerated climb. This section fixes both, and adds
-what Aakash's review asked for: the capital distribution enters validation, and excluding a
-moment from the *stopping decision* does not exempt it from being *checked*.
+The first pilot's rule failed for two reasons: a cross-sectional moment's own noise blocked the
+fast candidate, and a small absolute step didn't distinguish true convergence from a
+not-yet-accelerated climb. Astra independently applied a first proposed fix (three consecutive
+passes, raw step required non-increasing) to the *same, already-collected* checkpoint data and
+found it still fails: it accepts `firm_kappa`=1.4 and 2.0 at the earliest possible checkpoint
+(step 2,250) and never accepts the fitted candidate through step 9,000. **Verified independently
+here, against `results/review_v2/settled_regime/adaptive_pilot/trajectories.csv` -- no new
+simulation needed to catch this.**
 
-### Method
+**Why the "non-increasing absolute step" idea doesn't work.** A non-overlapping 450-step
+detection window's raw checkpoint-to-checkpoint difference has no reason to shrink monotonically
+just because the underlying process has converged: successive differences of an already-flat,
+noisy series are themselves noisy, not decreasing. Conversely, a genuinely still-rising S-curve
+can pass through a locally decelerating stretch (as `firm_kappa`=1.4's `discouraged_share`
+increments do, briefly, around step 2,250) long before it is anywhere near its true limit. Raw
+step size cannot tell these apart in either direction.
 
-- **Stopping-decision moments**: `discouraged_share`, `transport_budget_share`, `long_term_share`
-  only. `distance_gradient_slope` is excluded from the stopping decision (its per-checkpoint
-  noise is structurally unsuited to a consecutive-small-step test, per the first pilot's
-  diagnosis), **but is still computed, recorded and validated at every checkpoint and in the
-  final report** -- never silently dropped.
-- **Validation quantities, all candidates, all checkpoints, always recorded regardless of the
-  stopping decision**: the four calibration moments, plus the capital distribution's mean and
-  median among non-employed agents (the two quantities the window-stability work showed converge
-  at very different speeds) -- both reported against the long-run reference (section 5), whether
-  or not they drove the stopping decision.
-- **Detection window**: unchanged, 450 steps.
-- **Checkpoints**: unchanged, 900, 1350, 1800, 2250, 3150, 4500, 6300, 9000.
-- **Convergence rule, corrected**: for each stopping-decision moment, require the
-  checkpoint-to-checkpoint change to be no larger than that moment's own simulation SE of the
-  mean (section 1's corrected `precision_decomposition.csv`) for **three consecutive comparisons**
-  (not two), **and** the sequence of absolute changes itself must be non-increasing across those
-  three comparisons (a genuine flattening, not a locally quiet stretch inside a still-rising
-  trajectory). Accepted at the last of the three checkpoints.
-- **Computational limit**: unchanged, 9,000 steps.
-- **Measurement block**: unchanged, a fresh 150 steps immediately after acceptance, never the
-  window used to detect convergence.
-- **Unresolved-candidate treatment**: unchanged in spirit, restated precisely -- a candidate that
-  never satisfies the rule by step 9,000 is tagged UNRESOLVED. Its last available window is still
-  recorded and still validated against the long-run reference (so the report can show *how far
-  off* an unresolved candidate's last reading was, which is itself informative), but it must not
-  be scored as a converged, poor-fitting point in any downstream use.
+### The corrected rule: a local trend test against known noise, not a raw-step test
 
-### Acceptance criteria for this method itself (not yet met -- to be checked in the next pilot pass)
+At each checkpoint, for each of the three stopping-decision moments (`discouraged_share`,
+`transport_budget_share`, `long_term_share` -- `distance_gradient_slope` stays excluded from the
+*decision*, see below), fit an OLS slope of the moment's checkpoint-averaged value against step
+index over the last `TREND_WINDOW`=4 checkpoints, and test the slope against zero using that
+moment's own **externally known** simulation standard error (section 1's corrected
+`precision_decomposition.csv`), not the regression's own residual variance (only 4 points --
+far too few degrees of freedom to estimate its own noise). Convergence is accepted once this
+joint (all three moments) flatness test passes for 3 consecutive checkpoints in a row.
 
-1. On the *development* trajectories (the existing 60 runs, `CALIBRATION_SEEDS`, already
-   collected -- see section 5), the fast (fitted) candidate must be accepted, and accepted early
-   (by checkpoint 2250 at the latest).
-2. Every slow `firm_kappa` candidate (0.9, 1.4) must either be accepted at a checkpoint whose
-   reported value is within one combined-SE of the long-run reference (section 5's re-verified
-   reference, not assumed), or remain unresolved through step 9,000 -- not accepted early with a
-   materially wrong reported value, which is exactly the first rule's failure mode.
-3. `firm_kappa`=2.0 is expected to remain unresolved; this is an acceptable outcome, not a
-   pilot failure, and must be reported as unresolved rather than silently coerced into a value.
-4. `distance_gradient_slope` and the two capital-distribution quantities must be reported with
-   their bias against the reference for every candidate, resolved or not.
+**Verified against the existing development data before any new simulation was run** (`scripts/
+adaptive_burn_in_pilot.py`'s corrected `apply_stopping_rule`, applied to
+`adaptive_pilot/trajectories.csv`'s checkpoint averages):
 
-### Expected cost
+| candidate | accepted at (corrected rule) | expected |
+| --- | --- | --- |
+| fitted | **step 4,500** | fast, early -- matches |
+| `firm_kappa`=0.9 | unresolved through 9,000 | matches (far from settled, per the horizon campaigns) |
+| `firm_kappa`=1.4 | unresolved through 9,000 | matches |
+| `firm_kappa`=2.0 | unresolved through 9,000 | matches |
 
-Development (reusing existing trajectories, section 5): zero additional simulation cost --
-the redesigned rule is applied to data already collected. The *held-out* validation pass (fresh
-seeds, additional parameter combinations, per section 5) is new compute: at minimum the same
-scale as the first pilot (4-6 candidates x 15 seeds x 15,000-step trajectories, roughly 1,500-2,500
-seconds wall clock at 6-way parallelism, based on the first pilot's measured 1,488s for 4
-candidates) -- more if the reference-verification check in section 5 requires trajectories longer
-than 15,000 steps for the slowest candidates.
+This is the corrected rule, checked against the same data the flawed one failed on, before any
+held-out collection -- exactly the sequencing Aakash asked for.
+
+### Method (final, for the next collection pass)
+
+- **Stopping-decision moments**: `discouraged_share`, `transport_budget_share`, `long_term_share`.
+  `distance_gradient_slope` is excluded from the decision (structurally unsuited -- it is read
+  once per checkpoint, never window-averaged, so its own noise at 15 seeds is the same order as
+  the flatness threshold), **but is still computed, recorded and validated at every checkpoint
+  and in the final report.**
+- **Validation quantities, always recorded regardless of the stopping decision**: the four
+  calibration moments, plus the capital distribution's whole-population mean and median *and*
+  its non-employed-only mean and median (`scripts/diagnose_window_stability.py`'s
+  `_capital_quantile_row`, reused) -- both populations, not only the non-employed one, per
+  Aakash's instruction that excluding a quantity from the stopping rule must not exempt it from
+  validation.
+- **Detection window**: 450 steps. **Checkpoints**: 900, 1350, 1800, 2250, 3150, 4500, 6300, 9000.
+  **Computational limit**: 9,000 steps. **Measurement block**: a fresh 150 steps immediately
+  after acceptance, never the window used to detect convergence -- all unchanged from the first
+  pilot.
+- **Convergence rule**: the trend test above -- 3 consecutive checkpoints of a joint (all three
+  stopping moments), OLS-slope-against-known-noise flatness test.
+- **Unresolved-candidate treatment**: a candidate that never satisfies the rule by step 9,000 is
+  UNRESOLVED. Its last available window is still recorded and validated against the long-run
+  reference, but must not be scored as a converged, poor-fitting point.
+
+### Quantitative acceptance criteria for this development pass
+
+1. The fitted candidate must be ACCEPTED (not unresolved) by step 9,000. **Met**: accepted at
+   step 4,500.
+2. Every `firm_kappa` candidate tested (0.9, 1.4, 2.0) must NOT be accepted at any checkpoint
+   whose reported value differs from the long-run reference by more than the reference's own
+   combined SE -- i.e. no repeat of the first rule's failure mode (accepting early with a value
+   5-6x off). **Met by construction**: none of the three is accepted at all through step 9,000,
+   so this criterion cannot be violated; had one accepted early, its reported-vs-reference bias
+   would additionally need checking (not required here, since none accepted).
+3. `distance_gradient_slope` and all four capital-distribution quantities (whole-population and
+   non-employed, mean and median) must be reported with their bias against the reference for
+   every candidate, resolved or not. **Met**: collection pass run
+   (`results/review_v2/settled_regime/adaptive_pilot_v2/`, 1,395s wall clock). For the fitted
+   candidate (the only resolved one, so the only one with a `reported` value to bias-check):
+   `discouraged_share` bias -0.0044, `transport_budget_share` +0.00003, `long_term_share`
+   -0.0043 -- all well under one combined SE. `distance_gradient_slope` bias +0.059 against a
+   combined SE of about 1.42 -- trivially within noise, consistent with section 1's finding that
+   this moment's simulation precision is fine regardless of the window. Capital diagnostics:
+   non-employed mean bias -0.00004, non-employed median -0.00037, whole-population mean -0.00020,
+   whole-population median -0.00066 -- all small relative to their own level (~0.015). For the
+   three unresolved `firm_kappa` candidates, every reference value (including the four capital
+   quantities) is recorded even though there is no reported value to compare it against --
+   satisfying "validated even when excluded from the decision," not merely asserted.
+4. No candidate's stopping decision may depend on `distance_gradient_slope` or the capital
+   diagnostics. **Met by construction**: the rule only reads `STOPPING_MOMENTS`.
+
+**All four criteria pass.** The corrected rule and the capital-diagnostic collection are both
+verified on the development set. Per Aakash's sequencing instruction, held-out validation may
+now proceed -- see section 5's proposed design, not yet launched pending confirmation given its
+added cost.
+
+### Additional collection cost (Aakash's instruction to account for it explicitly)
+
+`results/review_v2/settled_regime/adaptive_pilot/trajectories.csv` has no capital measurements
+-- `scripts/adaptive_burn_in_pilot.py`'s first version tracked only the four calibration moments.
+Adding capital-distribution tracking requires re-simulating every (candidate, seed) pair from
+scratch: this script steps `CityModel` directly rather than going through the cached
+`run_moments_many` pipeline, so nothing here is cache-eligible, and the corrected rule needs the
+full checkpoint series regenerated regardless of the rule change alone. Cost: the same order as
+the first pilot's measured 1,488 seconds (4 candidates x 15 seeds x 15,000-step trajectories at
+6-way parallelism) plus the added per-checkpoint capital-quantile computation, which is cheap
+(rank statistics over 500 agents) relative to the simulation itself -- expected total in the same
+1,500-1,600 second range, not a materially larger cost. This collection has been run as part of
+this specification (see the addendum at the foot of this document for the completed numbers).
 
 ---
 
@@ -248,8 +347,73 @@ candidate (`firm_kappa`=2.0, whose own decay-rate extrapolation already suggeste
 past 9,000) and confirm the two references agree within simulation noise. If they do not, the
 reference horizon extends further before any bias figure against it is trusted.
 
-**Not yet done**: none of section 5's held-out collection has been run. This specification
-presents the design; the next step, on approval, is to build the redesigned rule (section 4),
-apply it to the existing development trajectories, and only then collect and check the held-out
-set above -- in that order, not skipping to a fresh pilot run before the rule has been checked
-against data already in hand.
+**Status: development phase is done and all four quantitative criteria pass (section 4). Held-out
+collection is proposed below, not yet launched.**
+
+**Proposed held-out design, costed:**
+
+- **Seeds**: a fresh block, 5001-5015 (15 seeds, matching `CALIBRATION_SEEDS`' count) -- disjoint
+  from `CALIBRATION_SEEDS` (1-15), `VALIDATION_SEEDS` (1001-1050), `WEIGHT_SEEDS` (2001-2050) and
+  this session's own ad hoc diagnostic block (3001-3050).
+- **Candidates**: the fitted point (repeat, on fresh seeds, as an independence check); a joint
+  perturbation (`firm_kappa`=0.9 *and* `search_cost_per_trip` at its own lower bound
+  simultaneously -- not one parameter at a time, per Aakash's instruction); one initialisation-
+  scheme check (the fitted point under P1.2's mixed-state transplant instead of all-searching,
+  to test whether a start closer to the long-run distribution changes how fast the rule accepts).
+- **Reference verification**: for the slowest candidate only (the joint `firm_kappa`/
+  `search_cost_per_trip` perturbation), extend the trajectory to 30,000 steps and compare the
+  window 13,501-15,000 against 28,501-30,000. If they agree within simulation noise, the
+  15,000-step reference is confirmed adequate for the other candidates too; if not, every
+  candidate's reference window extends to match.
+- **Computational cap**: unchanged, 9,000 steps for the stopping decision itself; the reference
+  verification's 30,000-step extension applies only to building trust in the reference, not to
+  the cap a real search would use.
+- **Cost estimate**: 5 candidates x 15 seeds x 15,000 steps, plus one candidate extended to
+  30,000 steps for the reference check -- roughly 1.3x the development pass's measured 1,395
+  seconds for the base collection, plus the 30,000-step extension (roughly 2x one candidate's
+  share, since cost scales close to linearly with horizon) -- an estimated 2,000-2,400 seconds
+  (33-40 minutes) at 6-way parallelism. Not launched in this specification; needs confirmation
+  given the added time on top of everything already run today.
+
+---
+
+## 6. Handling unresolved candidates during an actual future calibration search
+
+Aakash asked this be addressed explicitly: how unresolved candidates are handled during
+calibration, without silently excluding parts of the parameter space. Not implemented (no
+`calibrate.py` change), specified for when integration is eventually approved.
+
+**The wrong approach, ruled out:** assigning an unresolved candidate a large but finite penalty
+loss. This is exactly what Aakash's original instruction forbids -- "treat candidates that reach
+the limit as convergence unresolved, not automatically as poor-fitting models." A penalty makes
+Nelder-Mead actively steer away from the region, and a reader of the eventual thesis would never
+learn that the search avoided that region *because it was slow to measure*, not because it fits
+badly. If the true optimum sits in a slow-to-converge region (plausible for large parts of
+`firm_kappa`'s box, per the settled-regime assessment), a penalty-based rule would silently
+exclude exactly the region most in need of disclosure.
+
+**Recommended approach, modelled on an existing precedent in this codebase.**
+`calibrate.py`'s `simulate_moments` already propagates `nan` rather than a false zero when
+`distance_gradient_slope` is undefined at a degenerate parameter point -- "a nan moment means
+this parameter point can't be scored at all, not that it scores zero." Unresolved candidates
+should get the same treatment: the loss at an unresolved point is `nan`, not a number, distinct
+from both a good fit and a bad one.
+
+- **Latin hypercube stage**: an LHS point that comes back unresolved is recorded in full (its
+  parameter vector, and its last available checkpoint reading) but excluded from the pool of
+  points eligible to seed a Nelder-Mead restart, since there is no trustworthy loss to rank it
+  by. The *fraction* of the 200 LHS points that were unresolved, and their approximate location
+  in parameter space (e.g. what range of `firm_kappa` they cluster in), is recorded and reported
+  -- not discarded silently.
+- **Nelder-Mead stage**: a candidate landing on or near a previously unresolved region during
+  the search itself needs a defined move, not a crash. The standard, defensible choice is to
+  treat a `nan` loss the way an infeasible point is treated in constrained Nelder-Mead variants:
+  the simplex reflects or shrinks away from it without ever comparing it on equal footing to a
+  resolved point's real loss. This needs implementing and testing before any real search runs
+  it -- not done here.
+- **Reporting requirement, non-negotiable per Aakash's instruction:** whatever the final
+  mechanism, the calibration's own output must record, and the eventual thesis text must state:
+  total candidates evaluated, how many were unresolved, and an explicit sentence to the effect
+  that "candidates in region X were unresolved under the Y-step computational cap and could not
+  be scored; the true optimum could lie there, and this is a stated limitation of the search, not
+  a resolved non-issue." This is a disclosure requirement, not an optional caveat.

@@ -1,0 +1,58 @@
+{
+  "command": "python -m scripts.adaptive_burn_in_pilot --config configs/baseline.yaml --params results/published/calibration_result.json --precision-csv results/review_v2/settled_regime/precision_decomposition.csv --output-dir results/review_v2/settled_regime/adaptive_pilot_v2",
+  "rule_version": 2,
+  "detection_window": 450,
+  "checkpoints": [
+    900,
+    1350,
+    1800,
+    2250,
+    3150,
+    4500,
+    6300,
+    9000
+  ],
+  "computational_limit": 9000,
+  "measurement_block": 150,
+  "reference_window": [
+    13501,
+    15000
+  ],
+  "horizon": 15000,
+  "trend_window": 4,
+  "z_critical": 1.645,
+  "consecutive_passes_required": 3,
+  "stopping_moments": [
+    "discouraged_share",
+    "transport_budget_share",
+    "long_term_share"
+  ],
+  "validated_only_keys": [
+    "distance_gradient_slope",
+    "capital_non_employed_mean",
+    "capital_non_employed_q50",
+    "capital_all_mean",
+    "capital_all_q50"
+  ],
+  "thresholds": {
+    "discouraged_share": 0.005549719421560868,
+    "transport_budget_share": 0.0011928350867897663,
+    "long_term_share": 0.006374847438474798
+  },
+  "candidates": {
+    "fitted": {},
+    "firm_kappa_0.9": {
+      "firm_kappa": 0.9
+    },
+    "firm_kappa_1.4": {
+      "firm_kappa": 1.4
+    },
+    "firm_kappa_2.0": {
+      "firm_kappa": 2.0
+    }
+  },
+  "n_seeds_per_candidate": 15,
+  "n_jobs": 6,
+  "wall_clock_seconds": 1395.2479387000003,
+  "code_fingerprint": "4ee76189b2bf9cef"
+}
