@@ -73,3 +73,30 @@ P2.3 task list almost exactly:
 
 Only once these are decided does a defensible reconstructed `transport_budget_share` exist to
 compare against the current 0.1058.
+
+## Update, 2026-09-13: verified against the official NHTS 2020 CAPI instrument, per instruction
+
+Fetched and read the actual fielded questionnaire (`NHTS_Jan_Mar2020`, DataFirst catalogue 886,
+`https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/886/download/12143`, the same
+instrument this 2020 microdata was collected under). Two things confirmed, one discrepancy found.
+
+**Confirmed: hitchhikers are routed into the listed-mode cost block, exactly as reconstructed
+above.** The instrument's own enabling condition for `Q428bModeofTrv` (4.28b, "how many mode(s)
+of travel...") fires when the walk/cycle/drive/hitchhike question set are all "No" *or* when
+`Q419bHitchh` (hitchhike) is "Yes" -- hitchhikers get both their own routing question and the
+listed-mode cost block, matching the `hitchhike_and_listed_mode` grouping in
+`transport_missingness.csv`.
+
+**An apparent discrepancy in `Q433bPay`'s category list, checked and resolved as a PDF-extraction
+artifact, not a data problem.** The rendered instrument text (page 38 of the fetched PDF) appeared
+to list only 6 categories for the driver payment-period question -- Per single trip, Per return
+trip, Per week, Per month, DO NOT PAY, DO NOT KNOW -- with no "per year" or "package trips"
+option, which would have conflicted with the earlier live-data finding that 70 of 223 drivers
+report a "per year" period. Checked directly against the fielded `.dta`'s own value labels
+(`pyreadstat` variable-value-label read of `nhts-2020-person.dta`): `Q433bPay` in fact carries all
+8 categories -- 1:Per single trip, 2:Per return trip, 3:Per week, 4:Per month, **5:Per year**,
+**6:Package trips/Buying points**, 8:Not applicable, 9:Unspecified -- the PDF's rendered
+"DO NOT PAY"/"DO NOT KNOW" interviewer-facing labels correspond to the exported "Not
+applicable"/"Unspecified" codes, and the PDF text extraction simply truncated the on-screen list at
+6 of 8 items. The live-data "70 per year" finding is confirmed correct; no correction to
+`transport_missingness.csv` is needed.
