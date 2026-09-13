@@ -2,5 +2,5 @@ group,n,cost_source_field,payment_period_field,legitimate_zero,verified_against
 walk,1997,none (Q416bWalk=Yes routes away from the cost block),not applicable,TRUE,live NHTS 2020 person file
 cycle,27,none (Q417bCylce=Yes routes away from the cost block),not applicable,TRUE,live NHTS 2020 person file
 drive,223,Q434bCost,Q433bPay,FALSE (see transport_missingness.csv),live NHTS 2020 person file
-hitchhike,310,Q429b3Cost1 (uses the listed-mode cost block, paired mode label is a passenger/lift-club category),Q429b2Pay1,FALSE (see transport_missingness.csv),live NHTS 2020 person file
+hitchhike,310,Q429b3Cost1..Q432b3Cost4 (uses the same listed-mode multi-leg cost block as listed_mode; a hitchhiker's later legs can be paid even when the first is free -- see transport_missingness.csv),Q429b2Pay1..Q432b2Pay4,FALSE (see transport_missingness.csv),live NHTS 2020 person file
 listed_mode,2098,Q429b3Cost1..Q432b3Cost4,Q429b2Pay1..Q432b2Pay4,FALSE (see transport_missingness.csv),live NHTS 2020 person file
