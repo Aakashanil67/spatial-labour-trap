@@ -1,0 +1,6 @@
+group,n,legitimate_zero,usable_numeric_cost,genuine_nonresponse,nonresponse_detail
+walk,1997,1997,0,0,not applicable -- true zero fare by construction
+cycle,27,27,0,0,not applicable -- true zero fare by construction
+drive,223,0,138,85,"70 pay 'per year' with no numeric Q434bCost recorded, 10 pay via 'package trips/buying points' with no numeric cost, 5 have a real payment period but Q434bCost itself is 'Unspecified'"
+hitchhike_and_listed_mode,2408,159,2242,7,"159 report Q429b2Pay1='Do not pay' with Q429b3Cost1 correctly coded 'Not applicable' (a genuine zero, not missing); 7 have a named Q429bMode1Trv but Q429b3Cost1='Unspecified' (true cost nonresponse); the remaining 2242 have a usable numeric cost under one of: per single trip (1767), per return trip (447), per week (20), per month (9), per year (2), do not know (4, treated as unusable pending further check)"
+total,4655,2183,2380,92,"2,183 of 4,655 (46.9%) are genuine zero fares (walk + cycle + do-not-pay); 92 of 4,655 (2.0%) are genuine nonresponse; the remaining 2,380 have a usable numeric cost but its payment period has not yet been converted to a consistent daily/single-trip basis (see transport_definition.md)"

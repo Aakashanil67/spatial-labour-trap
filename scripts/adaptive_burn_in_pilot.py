@@ -4,14 +4,17 @@ The first pilot's rule (two consecutive checkpoints with a small absolute step) 
 (fitted) candidate never accepted within the 9,000-step limit (blocked by
 `distance_gradient_slope`'s own per-checkpoint noise), while every slow `firm_kappa` candidate
 accepted at the earliest possible checkpoint, reporting values 5-6x too low. A revised rule
-(three consecutive passes, raw absolute step required to be non-increasing) was checked
-independently against the *same, already-collected* checkpoint data and still failed: it accepts
-`firm_kappa`=1.4 and 2.0 at the earliest checkpoint (step 2250) and never accepts the fitted
-candidate at all through step 9,000. Diagnosis: a non-overlapping 450-step window's raw
-checkpoint-to-checkpoint difference has no reason to shrink monotonically just because the
-process has converged -- successive differences of an already-flat, noisy series are themselves
-noisy, not decreasing, so "flat because converged" and "locally quiet within a still-rising
-S-curve" are not distinguishable from raw step size alone in either direction.
+(three consecutive passes, raw absolute step required to be non-increasing) was independently
+checked by Astra, exactly as specified, against the *same, already-collected* checkpoint data:
+**it accepts none of the four candidates, including the fitted one, through step 9,000** --
+re-verified here (an earlier draft of this docstring wrongly claimed the `firm_kappa` candidates
+accepted at step 2,250; that claim only checked the threshold half of the rule, not the
+non-increasing half combined with it, and was wrong). Diagnosis of why the combined rule is
+simply too strict to ever fire: a non-overlapping 450-step window's raw checkpoint-to-checkpoint
+difference has no reason to shrink monotonically just because the process has converged --
+successive differences of an already-flat, noisy series are themselves noisy, not decreasing, so
+requiring three of them in a row to be non-increasing is a near-impossible bar even when the true
+process is flat.
 
 ## The corrected rule: a local trend test, not a raw-step test
 
@@ -29,6 +32,20 @@ first pilot's own checkpoint data before any new simulation was run (development
 not re-collection): the fitted candidate now accepts at step 4,500, and none of the three
 `firm_kappa` candidates (0.9, 1.4, 2.0) accepts by step 9,000, matching what the horizon
 extension campaigns independently already showed about how far those points are from settled.
+
+**Disclosure: step 4,500 is this rule's mechanical earliest-possible acceptance point, not an
+empirical finding about the fitted candidate specifically.** `TREND_WINDOW`=4 means the first
+testable trend estimate needs checkpoints 900/1350/1800/2250; `CONSECUTIVE_PASSES_REQUIRED`=3
+means three such estimates must pass in a row, i.e. the ones ending at 2250, 3150 and 4500 --
+so no candidate, however fast it truly settles, could ever be accepted before checkpoint 4,500
+under these parameters. That the fitted candidate accepts at exactly that floor is consistent
+with fast convergence, but does not by itself demonstrate it; a genuinely still-noisy or slower
+process would simply fail to reach three consecutive passes and stay unresolved, which is what
+happened for all three `firm_kappa` candidates. This method's known open problem (not yet
+resolved -- see the specification's discussion of test power) is that failing to reject a flat
+trend is not the same as confirming one: at low degrees of freedom the test can lack the power to
+detect a real, ongoing drift, so an early acceptance should be read as "not contradicted by this
+test" rather than "proven flat."
 
 ## Validation now covers what the stopping decision excludes
 

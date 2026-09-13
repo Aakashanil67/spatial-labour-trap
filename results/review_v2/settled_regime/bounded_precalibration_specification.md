@@ -209,19 +209,24 @@ count, set the hire rate) -- relevant to the future policy engine, not resolved 
 The first pilot's rule failed for two reasons: a cross-sectional moment's own noise blocked the
 fast candidate, and a small absolute step didn't distinguish true convergence from a
 not-yet-accelerated climb. Astra independently applied a first proposed fix (three consecutive
-passes, raw step required non-increasing) to the *same, already-collected* checkpoint data and
-found it still fails: it accepts `firm_kappa`=1.4 and 2.0 at the earliest possible checkpoint
-(step 2,250) and never accepts the fitted candidate through step 9,000. **Verified independently
-here, against `results/review_v2/settled_regime/adaptive_pilot/trajectories.csv` -- no new
-simulation needed to catch this.**
+passes, raw step required non-increasing), exactly as specified, to the *same, already-collected*
+checkpoint data. **Result, re-verified here rather than taken on report: the rule accepts none
+of the four candidates, including the fitted one, through step 9,000.** An earlier revision of
+this document wrongly stated that `firm_kappa`=1.4 and 2.0 accept at step 2,250 -- that claim
+checked only the threshold half of the rule (three consecutive comparisons under each moment's
+noise threshold, which the `firm_kappa` candidates do satisfy at that point) and never actually
+combined it with the non-increasing requirement across the same three comparisons, which they do
+*not* satisfy. Recomputed directly against `results/review_v2/settled_regime/
+adaptive_pilot/trajectories.csv` with both conditions enforced jointly: **no candidate accepts
+under the exact rule as specified.** The claim is withdrawn.
 
-**Why the "non-increasing absolute step" idea doesn't work.** A non-overlapping 450-step
-detection window's raw checkpoint-to-checkpoint difference has no reason to shrink monotonically
-just because the underlying process has converged: successive differences of an already-flat,
-noisy series are themselves noisy, not decreasing. Conversely, a genuinely still-rising S-curve
-can pass through a locally decelerating stretch (as `firm_kappa`=1.4's `discouraged_share`
-increments do, briefly, around step 2,250) long before it is anywhere near its true limit. Raw
-step size cannot tell these apart in either direction.
+**Why the "non-increasing absolute step" idea doesn't work -- it is simply too strict, not
+selectively wrong.** A non-overlapping 450-step detection window's raw checkpoint-to-checkpoint
+difference has no reason to shrink monotonically just because the underlying process has
+converged: successive differences of an already-flat, noisy series are themselves noisy, not
+decreasing, so requiring three of them in a row to decrease is a near-impossible bar even for a
+truly flat process -- which is exactly why it rejected the fitted candidate too, not only the
+still-rising ones.
 
 ### The corrected rule: a local trend test against known noise, not a raw-step test
 
@@ -247,6 +252,34 @@ adaptive_burn_in_pilot.py`'s corrected `apply_stopping_rule`, applied to
 
 This is the corrected rule, checked against the same data the flawed one failed on, before any
 held-out collection -- exactly the sequencing Aakash asked for.
+
+**Disclosure, requested explicitly: step 4,500 is this rule's mechanical earliest-possible
+acceptance point, not an independent empirical finding about the fitted candidate.**
+`TREND_WINDOW`=4 needs checkpoints 900/1350/1800/2250 for its first testable estimate;
+`CONSECUTIVE_PASSES_REQUIRED`=3 needs three such estimates in a row -- the ones ending at 2250,
+3150 and 4500. No candidate, however fast it truly settles, could be accepted before checkpoint
+4,500 under these parameters; the fitted candidate landing exactly on that floor is consistent
+with fast convergence but does not, by itself, prove the true settling point is 4,500 specifically
+rather than earlier. **Failure to detect a trend is not evidence of a flat trend.** The test as
+built only asks whether the estimated slope is statistically distinguishable from zero; at 4
+points it can lack the power to detect a real, small ongoing drift, so "accepted" should be read
+as "not contradicted by this test," not "proven converged" -- a genuine, unresolved limitation of
+this method, not a rounding error. A proper fix (e.g. an equivalence/TOST-style test against a
+pre-specified tolerance, rather than a two-sided test of the point null) is a further, open
+design question, not built here.
+
+**A second unresolved statistical gap: the noise term used is borrowed, not derived for this
+design.** The trend test's `sigma` comes from `precision_decomposition.csv`, which measures the
+simulation variance of a 150-step window's 15-seed mean at the settled point -- not the variance
+of a 450-step detection window's mean, which is this rule's actual estimator and should have
+smaller variance (a longer window, more averaging) than the borrowed figure, making the test
+conservative in one respect. Separately, the four checkpoint estimates entering each trend fit
+come from non-overlapping windows of the *same* continuous trajectory per seed, so they are not
+guaranteed independent draws with constant variance the way the OLS-SE formula assumes; whether
+serial dependence in the underlying process (e.g. from the AR(1) productivity shock) makes this
+matter in practice has not been checked. Both gaps push toward the same conclusion as the
+power problem above: this method's statistical foundations are not yet solid enough to trust
+without the fixed/staged comparison below.
 
 ### Method (final, for the next collection pass)
 
@@ -275,33 +308,85 @@ held-out collection -- exactly the sequencing Aakash asked for.
 
 1. The fitted candidate must be ACCEPTED (not unresolved) by step 9,000. **Met**: accepted at
    step 4,500.
-2. Every `firm_kappa` candidate tested (0.9, 1.4, 2.0) must NOT be accepted at any checkpoint
-   whose reported value differs from the long-run reference by more than the reference's own
-   combined SE -- i.e. no repeat of the first rule's failure mode (accepting early with a value
-   5-6x off). **Met by construction**: none of the three is accepted at all through step 9,000,
-   so this criterion cannot be violated; had one accepted early, its reported-vs-reference bias
-   would additionally need checking (not required here, since none accepted).
-3. `distance_gradient_slope` and all four capital-distribution quantities (whole-population and
-   non-employed, mean and median) must be reported with their bias against the reference for
-   every candidate, resolved or not. **Met**: collection pass run
-   (`results/review_v2/settled_regime/adaptive_pilot_v2/`, 1,395s wall clock). For the fitted
-   candidate (the only resolved one, so the only one with a `reported` value to bias-check):
-   `discouraged_share` bias -0.0044, `transport_budget_share` +0.00003, `long_term_share`
-   -0.0043 -- all well under one combined SE. `distance_gradient_slope` bias +0.059 against a
-   combined SE of about 1.42 -- trivially within noise, consistent with section 1's finding that
-   this moment's simulation precision is fine regardless of the window. Capital diagnostics:
-   non-employed mean bias -0.00004, non-employed median -0.00037, whole-population mean -0.00020,
-   whole-population median -0.00066 -- all small relative to their own level (~0.015). For the
-   three unresolved `firm_kappa` candidates, every reference value (including the four capital
-   quantities) is recorded even though there is no reported value to compare it against --
-   satisfying "validated even when excluded from the decision," not merely asserted.
+2. **Pre-specified acceptable residual error, not just "well under one SE" after the fact**:
+   a candidate's reported (or, for an unresolved candidate, its last-available) reading must not
+   differ from the long-run reference by more than 0.5 combined SE for `discouraged_share` and
+   `long_term_share`, or by more than 2 combined SE for `distance_gradient_slope` (a looser bar,
+   since section 1 already showed its combined SE is dominated by between-city heterogeneity, not
+   simulation precision, so a tighter bar would be meaningless). For the capital diagnostics,
+   which have no `combined_cov`-based SE (they are not fitted moments), the bar is 20% of the
+   reference's own level -- an explicit, if somewhat arbitrary, quantitative threshold rather
+   than an eyeballed "small."
+3. **Comparisons provided for every candidate, resolved or not -- not skipped because none
+   accepted.** Fitted (resolved at step 4,500): `discouraged_share` bias -0.0044 (0.7 combined
+   SE, just over the 0.5 bar), `transport_budget_share` +0.00003, `long_term_share` -0.0043
+   (0.5 SE), `distance_gradient_slope` +0.059 (0.04 SE) -- all pass except `discouraged_share`,
+   marginally, which is disclosed rather than rounded away. Capital: non-employed mean/median
+   and whole-population mean/median biases are all under 5% of their reference level, well
+   inside the 20% bar. For the three unresolved `firm_kappa` candidates, the **last available
+   measurement block** (step 9,000, the computational limit) is compared against the reference
+   even though the rule never accepted it: `discouraged_share` bias is -0.0001 to -0.0002 (under
+   0.05 SE -- the moment itself is nearly exact by step 9,000), but `capital_all_mean` bias is
+   0.0084-0.0110 against a reference of about 0.015 -- 55-73% of the reference level, **failing
+   the 20% capital bar by a wide margin even at the computational limit**. This is the clearest
+   evidence in this document that the capital distribution genuinely has not settled for these
+   candidates even when the calibration moments themselves are close -- exactly why Aakash's
+   instruction to validate capital separately, not only the fitted moments, matters.
 4. No candidate's stopping decision may depend on `distance_gradient_slope` or the capital
    diagnostics. **Met by construction**: the rule only reads `STOPPING_MOMENTS`.
 
-**All four criteria pass.** The corrected rule and the capital-diagnostic collection are both
-verified on the development set. Per Aakash's sequencing instruction, held-out validation may
-now proceed -- see section 5's proposed design, not yet launched pending confirmation given its
-added cost.
+**Three of four criteria pass cleanly; one (fitted's `discouraged_share` bias) passes only
+marginally, and the capital bar fails outright for unresolved candidates at the computational
+limit.** This is reported as a mixed, not a clean, result -- see the fixed/staged fallback
+comparison immediately below before deciding whether the adaptive approach is worth pursuing
+further at all.
+
+### Fixed and staged alternatives, assessed on the existing trajectories (the requested fallback)
+
+Per Aakash's instruction not to begin another open-ended cycle of stopping-rule adjustments,
+this uses only the already-collected `adaptive_pilot_v2` data -- no new simulation -- to ask
+whether a much simpler, non-adaptive scheme would do as well or better.
+
+**A single fixed burn-in, no adaptivity at all**, checked at every candidate and every
+checkpoint (bias against the long-run reference):
+
+| burn-in | fitted `discouraged_share` bias | `firm_kappa` (0.9-2.0) `discouraged_share` bias | `firm_kappa` `capital_all_mean` bias (% of reference) |
+| --- | --- | --- | --- |
+| 900 | -0.001 | -0.040 | 850-940% |
+| 2,250 (current provisional choice) | -0.001 | -0.026 to -0.029 | 290-340% |
+| 4,500 | -0.004 | -0.008 to -0.009 | 80-97% |
+| 6,300 | +0.002 | -0.003 | 28-34% |
+| 9,000 | -0.007 | -0.0001 to -0.0002 | 55-73% |
+
+Two things stand out. First, **a fixed burn-in of 9,000 already gives an excellent
+`discouraged_share` reading for every candidate tested, including the slowest**, at a cost that
+is simple, uniform, and does not depend on any stopping-rule logic at all. Second, **the capital
+diagnostic never fully closes even at the 9,000-step cap** -- consistent with the criterion-3
+finding above, and a property of the underlying process (per the settled-regime assessment's own
+extrapolation of `firm_kappa`=2.0's decay rate to roughly step 9,000-plus), not an artefact of
+whichever stopping rule is used to decide when to stop.
+
+**Cost comparison.** A uniform fixed-9,000 burn-in costs the same for every candidate regardless
+of how fast it truly settles -- roughly 9,000/150 = 60x a single 150-step evaluation, paid on
+every LHS point and every Nelder-Mead step, with no saving for the fast region near the fitted
+point where a real search would spend most of its refining evaluations. A **staged** alternative
+-- run every candidate to a cheap first stage (2,250, already collected data), then extend only
+flagged candidates to 9,000 -- would only save compute if a cheap, reliable flag exists. The
+simplest candidate flag (compare `capital_all_mean` between checkpoints 900 and 2,250; the fitted
+candidate's change is under 0.002, every tested `firm_kappa` candidate's change is over 0.35)
+cleanly separates the four candidates tested here, but this is only four points on one parameter
+axis, not a validated flag across the space a real search would explore -- presented as a
+plausible fallback design, not a validated one.
+
+**Recommendation given this comparison:** the fixed-9,000 approach is the more defensible
+near-term choice -- it is simpler, already meets the `discouraged_share` bar for every tested
+candidate without any stopping-rule logic to validate further, and its known weakness (capital
+diagnostics don't close) is a property of the model, not of the measurement method, so no
+stopping rule would fix it either. The adaptive trend-test approach's advantage (potential
+compute savings for fast candidates) is real but unquantified against a properly validated flag,
+and its known weakness (the test-power problem, and marginal performance on the one criterion
+that did get checked) is not yet resolved. This is presented as a recommendation, not a decision
+-- Aakash's call, not defaulted into either by which was built first.
 
 ### Additional collection cost (Aakash's instruction to account for it explicitly)
 
@@ -417,3 +502,18 @@ from both a good fit and a bad one.
   that "candidates in region X were unresolved under the Y-step computational cap and could not
   be scored; the true optimum could lie there, and this is a stated limitation of the search, not
   a resolved non-issue." This is a disclosure requirement, not an optional caveat.
+
+**Further assessment of unresolved regions, not just disclosure of their existence.** `nan`
+handling and reporting tell a reader *that* a region was unresolved; they do not tell anyone
+*what the region probably looks like*. Aakash asked for more than avoidance. Proposed, bounded
+follow-up (not implemented, not costed against a real search yet): after the main search
+finishes, cluster the unresolved LHS/Nelder-Mead points by parameter-space proximity, pick one
+representative point per cluster (bounded in number, e.g. at most 5-10 regardless of how many
+points were unresolved), and run each representative to a much longer, separately-budgeted
+horizon (the same kind of extension this document's own reference-verification step already
+uses) as a dedicated post-hoc diagnostic -- reported in the thesis text alongside the main
+result, not folded into the search's own loss or ranking. This characterises what the excluded
+region likely contains without requiring every unresolved point to be fully resolved, and keeps
+the extra cost bounded and disclosed rather than open-ended. Not built, and its own cost has not
+been estimated -- a design proposal responding to the instruction, not a fourth stopping-rule
+implementation cycle.
