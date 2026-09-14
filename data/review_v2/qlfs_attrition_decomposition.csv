@@ -1,0 +1,4 @@
+component,n,share_of_q4_eligible,note
+whole_dwelling_not_seen_in_q1,13217,0.2871,"UQNO not observed at all in 2026-Q1. Consistent with scheduled rotation out of the panel, but not confirmed as such -- no rotation/wave variable exists in either extract to verify it."
+person_not_matched_within_continuing_dwelling,1838,0.0399,"UQNO IS observed again in 2026-Q1 (the dwelling continued in the panel), but this PERSONNO was not. Looks more like ordinary within-household attrition (moved out, temporarily absent, etc.) than a scheduled panel exit, since the dwelling itself was not scheduled to leave."
+matched,30977,0.6729,UQNO+PERSONNO matched with valid Status in both waves.

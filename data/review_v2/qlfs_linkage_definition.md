@@ -13,7 +13,9 @@ model side should target.
 
 Reproducible from `scripts/build_qlfs_linkage_review.py`
 (`python -m scripts.build_qlfs_linkage_review`, requires `THESIS_DATA_ROOT`), which writes
-`qlfs_linkage_flags.csv` and `qlfs_provisional_transitions.csv`.
+`qlfs_linkage_flags.csv`, `qlfs_provisional_transitions.csv`, `qlfs_transition_sensitivity.csv`,
+`qlfs_age_universe_comparison.csv`, and `qlfs_attrition_decomposition.csv`. Every count in this
+file is an **unweighted sample diagnostic** -- no QLFS design weight is applied anywhere here.
 
 ## Demographic linkage flags, reproduced exactly
 
@@ -52,32 +54,64 @@ group in particular can legitimately be self-reported inconsistently across wave
 roster error). The transition-rate comparison below is offered as further, quantitative evidence,
 not as a resolution.
 
-## Status coverage and working-age attrition
+## Status coverage: explicit age-universe alternatives, CORRECTED 2026-09-14
 
-The raw 67.5% match rate is not the right "attrition" figure for a Status-based transition target,
-because `Status` is only derived for respondents aged 15+ -- children are a large share of the
-denominator and cannot appear as a transition regardless of linkage:
+**The prior pass of this file mislabelled the age-15+ population as "working-age", which is
+wrong and is corrected here.** `Status` is derived for every respondent aged 15 and over with no
+upper bound -- 10.2% of the Status-eligible 2025-Q4 population is 65 or older -- so "age 15+" and
+"working-age" (which conventionally means 15-64, the convention this project already uses for
+`discouraged_share`/`long_term_share`) are different populations and must not be conflated. Both
+are reported explicitly rather than picking one silently:
 
-| metric | value |
-| --- | --- |
-| 2025-Q4 total respondents | 63,264 |
-| 2025-Q4 Status-eligible (age 15+) | 46,032 |
-| 2026-Q1 total respondents | 62,819 |
-| 2026-Q1 Status-eligible (age 15+) | 45,873 |
-| Matched (UQNO+PERSONNO), both waves Status-eligible | 30,977 |
-| Attrition among 2025-Q4 Status-eligible population | 32.7% |
-| Attrition among 2026-Q1 Status-eligible population (back-attrition) | 32.5% |
+| age universe | Q4 eligible n | Q1 eligible n | matched n | unmatched share (vs. Q4) |
+| --- | --- | --- | --- | --- |
+| 15+ (no upper bound -- what `Status` is actually derived for) | 46,032 | 45,873 | 30,977 | 32.7% |
+| 15-64 (`discouraged_share`/`long_term_share` convention) | 40,854 | 40,666 | 27,223 | 33.4% |
 
-Confirmed as an exact internal consistency check: 30,977 matched Status-eligible-both-waves
+The choice moves the unmatched share by 0.7 percentage points -- small, but the two are genuinely
+different populations (the 15+ figure counts pensioners' "Other not economically active" status;
+the 15-64 figure does not) and reporting only one without saying which would have been a silent
+population choice. Everything below (flags, transitions) uses the 15+ population, matching
+`Status`'s own derivation; the 15-64 alternative is available in `qlfs_age_universe_comparison.csv`
+for whichever population a future target actually needs.
+
+Confirmed as an exact internal consistency check: 30,977 matched Status-eligible-both-waves (15+)
 records is exactly the population size behind the transition matrix below (the "All" margin of
 the raw matched-panel cross-tab). Missingness among the raw 42,695 matched records (11,718 with
 `Status` unmapped in at least one wave) is 100% attributable to age under 15 in the affected wave,
 confirmed live -- not a separate nonresponse problem.
 
-**32.7% is a substantial attrition rate and should be treated as a real limitation of any survey
-transition target built this way**, not a footnote. No design-based nonresponse weighting has been
-applied to correct for it (unweighted counts throughout); whether QLFS's own panel weights address
-this is not checked here.
+## Decomposing the 32.7% unmatched share, CORRECTED 2026-09-14
+
+**Scheduled rotation is not mechanically subtracted here.** QLFS is publicly documented as a
+rotating panel, which would suggest some of the 32.7% unmatched share reflects respondents
+scheduled to leave the sample rather than genuine attrition. But neither 2025-Q4 nor 2026-Q1
+carries a rotation-group, wave, visit, or panel-position variable -- confirmed by a full search of
+every column name AND label in both extracts, not just a keyword subset (only `Stratum` matched
+any design-related keyword). Applying a generic rotation-scheme percentage (e.g. assuming a
+4-quarter rotation implies ~25% scheduled turnover per quarter) without a variable to verify it
+against this specific data would be exactly the kind of unsupported assumption this review is
+trying to avoid, so it is not done.
+
+What the data DOES support is a coarser, still genuinely informative split, using `UQNO` (the
+dwelling identifier) directly:
+
+| component | n | share of Q4 Status-eligible (15+) | interpretation |
+| --- | --- | --- | --- |
+| Whole dwelling not seen in 2026-Q1 at all | 13,217 | 28.7% | The UQNO itself does not reappear. Consistent with scheduled rotation out of the panel, but not confirmed as such absent a rotation variable. |
+| Dwelling continues, but this person is not matched | 1,838 | 4.0% | The UQNO DOES reappear (the dwelling stayed in the panel), but this specific PERSONNO does not. Looks more like ordinary within-household attrition (moved out, temporarily absent, deceased, etc.) than a scheduled exit, since the dwelling itself was not scheduled to leave. |
+| Matched | 30,977 | 67.3% | UQNO+PERSONNO matched with valid Status in both waves. |
+
+These three sum exactly to the Q4 Status-eligible population (46,032). This is offered as a
+genuine, data-supported partial decomposition -- not a rotation-group variable, and the
+28.7%/4.0% split should not be read as "scheduled" vs. "attrition" with certainty, only as
+"whole-household non-continuity" vs. "within-household non-match", which is a meaningfully
+different (and more informative) split than the raw 32.7% alone.
+
+**32.7% (or 33.4% under the 15-64 alternative) is a substantial unmatched share and should be
+treated as a real limitation of any survey transition target built this way**, not a footnote.
+No design-based nonresponse weighting has been applied to correct for it (unweighted counts
+throughout, as stated above); whether QLFS's own panel weights address this is not checked here.
 
 ## Provisional quarterly Status transitions
 
@@ -95,18 +129,37 @@ visible rather than asserted:
 | Discouraged | 197 | 388 | 1,417 | 358 | 2,360 | 0.6004 |
 | Other NEA | 266 | 695 | 422 | 11,741 | 13,124 | 0.8946 |
 
-**Excluding the 625 flagged records (n=30,494):**
+**Excluding the 625 flagged records (n=30,494) -- full absolute and relative sensitivity,
+CORRECTED 2026-09-14 to cover every origin/destination cell, not just the diagonal:**
 
-| origin | diagonal share |
-| --- | --- |
-| Employed | 0.9104 |
-| Unemployed | 0.7125 |
-| Discouraged | 0.6061 |
-| Other NEA | 0.8984 |
+| origin -> destination | full panel share | excl-flagged share | absolute diff (pp) | relative diff |
+| --- | --- | --- | --- | --- |
+| Employed -> Employed | 0.9062 | 0.9104 | +0.42 | +0.5% |
+| Employed -> Unemployed | 0.0467 | 0.0457 | -0.10 | -2.1% |
+| Employed -> Discouraged | 0.0173 | 0.0169 | -0.04 | -2.3% |
+| Employed -> Other NEA | 0.0298 | 0.0270 | -0.28 | -9.4% |
+| Unemployed -> Employed | 0.0903 | 0.0882 | -0.21 | -2.3% |
+| Unemployed -> Unemployed | 0.7094 | 0.7125 | +0.31 | +0.4% |
+| Unemployed -> Discouraged | 0.0756 | 0.0758 | +0.02 | +0.3% |
+| Unemployed -> Other NEA | 0.1248 | 0.1235 | -0.13 | -1.0% |
+| Discouraged -> Employed | 0.0835 | 0.0820 | -0.15 | -1.8% |
+| Discouraged -> Unemployed | 0.1644 | 0.1645 | +0.01 | +0.1% |
+| Discouraged -> Discouraged | 0.6004 | 0.6061 | +0.57 | +0.9% |
+| Discouraged -> Other NEA | 0.1517 | 0.1473 | -0.44 | -2.9% |
+| Other NEA -> Employed | 0.0203 | 0.0181 | -0.22 | -10.8% |
+| Other NEA -> Unemployed | 0.0530 | 0.0520 | -0.10 | -1.9% |
+| Other NEA -> Discouraged | 0.0322 | 0.0314 | -0.08 | -2.5% |
+| Other NEA -> Other NEA | 0.8946 | 0.8984 | +0.38 | +0.4% |
 
-Excluding the flagged records moves every diagonal share by at most 0.006 -- the flagged records
-are too small a share of the panel (2.0% of the Status-eligible matched population) to matter for
-the aggregate transition rates, whichever reading of them is correct.
+Full detail in `qlfs_transition_sensitivity.csv`. The diagonal (persistence) cells all move by
+under 0.6 percentage points in absolute terms -- immaterial for the states that dominate the
+population. But the RELATIVE picture on small off-diagonal cells is not uniformly small: the two
+"-> Employed" cells from inactive-adjacent origins move by 9-11% in relative terms (Employed ->
+Other NEA and Other NEA -> Employed), because their base rates are themselves small (2-3%), so the
+same absolute change is a larger fraction of a smaller number. Absolute magnitude is what matters
+for most practical purposes here, but a future user relying on a small transition probability
+specifically (e.g. the inactive-to-employed flow) should be aware the relative sensitivity there is
+larger than the headline diagonal comparison suggests.
 
 **Flagged records only (n=483 with valid Status both waves, of 625 total):**
 
@@ -128,11 +181,16 @@ recorded; neither is adopted.
 
 ## What this does and does not settle
 
-Settled: the demographic flags reproduce exactly, the flagged records are a small enough share
-that excluding them barely moves the aggregate transition rates, and working-age attrition (32.7%)
-is quantified rather than ignored.
+Settled: the demographic flags reproduce exactly; the flagged records are a small enough share
+that excluding them moves diagonal transition shares by under 0.6pp (though some small
+off-diagonal cells move by 9-11% in relative terms); the age-15+ population is correctly
+distinguished from the 15-64 "working-age" convention, with both reported; and the unmatched share
+is decomposed as far as the available fields allow (whole-dwelling non-continuity vs.
+within-dwelling person-level non-match) without assuming a mechanical rotation percentage.
 
-Not settled: whether the flagged records are genuine transitions or linkage errors; any panel
-weighting correction for attrition or the rotating-panel design; and -- unchanged from the prior
-pass -- whether or how any of this becomes a model calibration target, which depends on the
-still-unresolved model-observation state mapping.
+Not settled: whether the flagged records are genuine transitions or linkage errors; whether
+whole-dwelling non-continuity is actually scheduled rotation (no rotation variable exists to
+confirm it); any panel weighting correction for attrition or the rotating-panel design (everything
+here is an unweighted sample diagnostic); and -- unchanged from the prior pass -- whether or how
+any of this becomes a model calibration target, which depends on the still-unresolved
+model-observation state mapping.

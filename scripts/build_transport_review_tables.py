@@ -145,33 +145,49 @@ def classify_leg(row: pd.Series, spec: dict) -> str:
     if pd.isna(pay) or pay in spec["pay_na"]:
         return "not_administered"
     if pay == spec["pay_zero"]:
-        return "zero_fare"
+        return "zero_fare_stated"
     if spec["pay_dnk"] is not None and pay == spec["pay_dnk"]:
         return "nonresponse_period_dnk"
     if pd.isna(cost) or cost == spec["cost_unspec"]:
         return "ambiguous_unspecified_cost"
     if cost == spec["cost_na"]:
         return "internal_inconsistency"
+    if cost == 0:
+        # A named payment period (1-4) with a reported cost of exactly R0. Distinct
+        # from "do not pay" (an implied/skip-pattern zero) -- this is an ANSWERED
+        # zero -- but the same "known, zero-cost" outcome at the journey level, so it
+        # is bucketed with zero_fare_stated for classification purposes below.
+        return "zero_fare_numeric"
     return "positive_numeric"
+
+
+ZERO_CLASSES = ("zero_fare_stated", "zero_fare_numeric")
+UNRESOLVED_CLASSES = ("ambiguous_unspecified_cost", "internal_inconsistency")
 
 
 def journey_class(leg_statuses: list[str]) -> str:
     admin = [c for c in leg_statuses if c != "not_administered"]
     if not admin:
         return "no_legs_administered"
-    unresolved_classes = ("ambiguous_unspecified_cost", "internal_inconsistency")
     has_positive = any(c == "positive_numeric" for c in admin)
-    has_unresolved = any(c in unresolved_classes for c in admin)
-    if has_positive and has_unresolved:
+    # A "do not know" payment period is unresolved, not a free pass: a positive leg
+    # elsewhere does not make the journey fully costed if another leg's payment
+    # period itself was never established -- that leg could have been paid or free.
+    has_unresolved = any(c in UNRESOLVED_CLASSES for c in admin)
+    has_dnk = any(c == "nonresponse_period_dnk" for c in admin)
+    if has_positive and (has_unresolved or has_dnk):
         return "partially_observed_positive"
     if has_positive:
         return "fully_costed_positive"
-    if has_unresolved:
-        return "ambiguous"
-    if all(c == "zero_fare" for c in admin):
+    if all(c in ZERO_CLASSES for c in admin):
         return "zero"
     if all(c == "nonresponse_period_dnk" for c in admin):
         return "nonresponse"
+    if has_unresolved or has_dnk:
+        # No positive leg, but the journey mixes zero-fare and/or DNK and/or
+        # unresolvable-cost legs -- the total is not confirmed zero, so it is
+        # ambiguous rather than assumed free.
+        return "ambiguous"
     return "unclassified"
 
 
@@ -194,6 +210,13 @@ def summarise_hitchhike_listed(sub: pd.DataFrame, leg_df: pd.DataFrame) -> dict:
     ambiguous = int(counts.get("ambiguous", 0))
     nonresponse = int(counts.get("nonresponse", 0))
 
+    leg_names = [c for c in leg_df.columns if c != "journey"]
+    zero_journeys = leg_df.index[leg_df["journey"] == "zero"]
+    stated_only = leg_df.loc[zero_journeys, leg_names].apply(
+        lambda r: all(v in ("zero_fare_stated", "not_administered") for v in r), axis=1
+    )
+    numeric_zero_involved = int((~stated_only).sum())
+
     old_leg1_zero = sub["Q429b2Pay1"] == 7
     positive_classes = ["fully_costed_positive", "partially_observed_positive"]
     reclassified = old_leg1_zero & leg_df["journey"].isin(positive_classes)
@@ -202,18 +225,26 @@ def summarise_hitchhike_listed(sub: pd.DataFrame, leg_df: pd.DataFrame) -> dict:
 
     detail = (
         f"Journey-level classification across all four reported travel legs (Q429b-Q432b "
-        f"block). {zero} people report 'do not pay' on every administered leg (numeric zero "
-        f"fare). {fully_costed} journeys are fully costed positive (every administered leg "
-        f"resolves to a known value -- zero or numeric -- with at least one positive). "
-        f"{partial} journeys are partially observed positive: at least one leg carries a "
-        f"numeric positive cost but at least one other administered leg is "
-        f"ambiguous/unspecified, so the journey is known to involve real payment but its "
+        f"block), CORRECTED 2026-09-14 for numeric-zero handling and DNK-as-unresolved. "
+        f"{zero} journeys are legitimate zero fares -- every administered leg is either "
+        f"'do not pay' (a stated zero) or a named payment period with a reported cost of "
+        f"exactly R0 (a numeric zero, answered rather than skip-implied); {numeric_zero_involved} "
+        f"of the {zero} involve at least one numeric-zero leg rather than being 'do not pay' "
+        f"on every leg. {fully_costed} journeys are fully costed positive (every administered "
+        f"leg resolves to a known value -- zero or a positive number -- with at least one "
+        f"positive). {partial} journeys are partially observed positive: at least one leg "
+        f"carries a positive cost but at least one other administered leg is unresolved "
+        f"(unspecified cost, an internal inconsistency, or the payment period itself recorded "
+        f"as 'do not know' -- a DNK leg is NOT treated as a free pass to 'fully costed' merely "
+        f"because another leg paid), so the journey is known to involve real payment but its "
         f"total is not fully observed. Of the {usable_numeric} usable-numeric journeys, "
-        f"{int(leg1_numeric.sum())} have a numeric FIRST-leg cost alone; "
-        f"{int(reclassified.sum())} were reported free on leg 1 but paid on a later leg and "
-        f"were wrongly zeroed out by a leg-1-only reading. {ambiguous} journeys have no "
-        f"positive leg but at least one unresolvable (unspecified-cost or "
-        f"internal-inconsistency) leg. {nonresponse} report 'do not know' as the payment "
+        f"{int(leg1_numeric.sum())} have a numeric FIRST-leg cost alone (this count is not "
+        f"itself zero/positive-split -- see transport_provisional_reconstruction.csv for the "
+        f"positive-only per-period figures); {int(reclassified.sum())} were reported free on "
+        f"leg 1 but paid on a later leg and were wrongly zeroed out by a leg-1-only reading. "
+        f"{ambiguous} journeys have no positive leg but at least one unresolvable leg (mixing "
+        f"zero-fare legs with an ambiguous-cost, internal-inconsistency, or DNK leg, so the "
+        f"total is not confirmed zero). {nonresponse} report 'do not know' as the payment "
         f"period on every administered leg."
     )
     return dict(
@@ -233,21 +264,26 @@ def summarise_hitchhike_listed(sub: pd.DataFrame, leg_df: pd.DataFrame) -> dict:
 def summarise_driver(sub: pd.DataFrame) -> dict:
     n = len(sub)
     pay, cost = sub["Q433bPay"], sub["Q434bCost"]
-    numeric = cost.notna() & ~cost.isin([DRIVER_COST_NA, DRIVER_COST_UNSPEC])
+    resolved = cost.notna() & ~cost.isin([DRIVER_COST_NA, DRIVER_COST_UNSPEC])
+    numeric_zero = resolved & (cost == 0)
+    numeric_positive = resolved & (cost != 0)
     codes_1_4 = pay.isin([1, 2, 3, 4])
-    unambiguous_numeric = int((numeric & codes_1_4).sum())
+    unambiguous_positive = int((numeric_positive & codes_1_4).sum())
+    unambiguous_zero = int((numeric_zero & codes_1_4).sum())
     unambiguous_total = int(codes_1_4.sum())
-    ambiguous_cost = int((codes_1_4 & ~numeric).sum())
+    ambiguous_cost = int((codes_1_4 & ~resolved).sum())
     disputed = int(pay.isin([5, 6]).sum())
     disputed_5 = int((pay == 5).sum())
     disputed_6 = int((pay == 6).sum())
 
     detail = (
-        f"Unambiguous (codes 1-4, n={unambiguous_total}): {unambiguous_numeric} have numeric "
-        f"Q434bCost (sentinel codes {DRIVER_COST_NA}/{DRIVER_COST_UNSPEC} excluded "
-        f"field-specifically, confirmed live against meta.variable_value_labels); "
-        f"{ambiguous_cost} have a real payment period but Q434bCost itself is Unspecified "
-        f"(ambiguous). "
+        f"Unambiguous (codes 1-4, n={unambiguous_total}): {unambiguous_positive} have a "
+        f"positive numeric Q434bCost, and {unambiguous_zero} have a named payment period with "
+        f"Q434bCost reported as exactly R0 (a numeric zero fare, CORRECTED 2026-09-14 -- "
+        f"previously folded into the usable-numeric-cost/positive count) -- sentinel codes "
+        f"{DRIVER_COST_NA}/{DRIVER_COST_UNSPEC} excluded field-specifically, confirmed live "
+        f"against meta.variable_value_labels; {ambiguous_cost} have a real payment period but "
+        f"Q434bCost itself is Unspecified (ambiguous). "
         f"DISPUTED (n={disputed}, codes 5-6): the fielded instrument's own printed category "
         f"list for Q433bPay (page 38 of the CAPI export) shows only 6 options -- per "
         f"single/return/week/month, then code 5=DO NOT PAY, code 6=DO NOT KNOW -- and "
@@ -263,13 +299,13 @@ def summarise_driver(sub: pd.DataFrame) -> dict:
     return dict(
         group="drive",
         n=n,
-        legitimate_zero=0,
-        usable_numeric_cost=unambiguous_numeric,
+        legitimate_zero=unambiguous_zero,
+        usable_numeric_cost=unambiguous_positive,
         ambiguous_cost_unspecified=ambiguous_cost,
         nonresponse_period_dnk=0,
         disputed_q433_codes_5_6=disputed,
         detail=detail,
-        fully_costed_positive=unambiguous_numeric,
+        fully_costed_positive=unambiguous_positive,
         partially_observed_positive=0,
     )
 
@@ -368,7 +404,10 @@ def build_provisional_reconstruction(df: pd.DataFrame) -> pd.DataFrame:
 
     rows = []
     pay1, cost1 = sub_hl["Q429b2Pay1"], sub_hl["Q429b3Cost1"]
-    numeric1 = cost1.notna() & ~cost1.isin([8888, 9999])
+    # Positive cost only: numeric zero (cost==0 with a named period) is a legitimate
+    # zero fare, not a positive figure to average into these per-period tables --
+    # it is counted in transport_missingness.csv's legitimate_zero instead.
+    numeric1 = cost1.notna() & ~cost1.isin([8888, 9999, 0])
     for code, label in PERIOD_LABELS.items():
         m = (pay1 == code) & numeric1
         vals = cost1[m]
@@ -385,12 +424,13 @@ def build_provisional_reconstruction(df: pd.DataFrame) -> pd.DataFrame:
             )
         )
 
-    # Later-leg paid despite free first leg
+    # Later-leg paid despite free first leg (positive cost only, same numeric-zero
+    # exclusion as above)
     old_zero = pay1 == 7
     later_paid = []
     for spec in LEG_SPECS[1:]:
         c = sub_hl[spec["cost"]]
-        m = old_zero & c.notna() & ~c.isin([spec["cost_na"], spec["cost_unspec"]])
+        m = old_zero & c.notna() & ~c.isin([spec["cost_na"], spec["cost_unspec"], 0])
         later_paid.extend(c[m].tolist())
     if later_paid:
         s = pd.Series(later_paid)
@@ -415,10 +455,10 @@ def build_provisional_reconstruction(df: pd.DataFrame) -> pd.DataFrame:
             )
         )
 
-    # Driver side, Scenario A/B disclosed, corrected sentinel handling
+    # Driver side, Scenario A/B disclosed, corrected sentinel AND numeric-zero handling
     payd = df.loc[masks["drive"], "Q433bPay"]
     costd = df.loc[masks["drive"], "Q434bCost"]
-    numeric_d = costd.notna() & ~costd.isin([DRIVER_COST_NA, DRIVER_COST_UNSPEC])
+    numeric_d = costd.notna() & ~costd.isin([DRIVER_COST_NA, DRIVER_COST_UNSPEC, 0])
     driver_periods = {1: "per_single_trip", 2: "per_return_trip", 3: "per_week", 4: "per_month"}
     for code, label in driver_periods.items():
         m = (payd == code) & numeric_d
@@ -426,7 +466,9 @@ def build_provisional_reconstruction(df: pd.DataFrame) -> pd.DataFrame:
         n = int(m.sum())
         note = (
             "Codes 1-4 only (unambiguous under both scenarios; see transport_definition.md "
-            "for the Q433bPay code 5/6 ambiguity, which is NOT included here). Cost "
+            "for the Q433bPay code 5/6 ambiguity, which is NOT included here). Positive "
+            "cost only -- numeric zero (cost==0) excluded, CORRECTED 2026-09-14, and counted "
+            "as a legitimate zero fare in transport_missingness.csv instead. Cost "
             "sentinels 8888 (not applicable) and 9999 (unspecified) excluded "
             "field-specifically for Q434bCost, confirmed live against "
             "meta.variable_value_labels."

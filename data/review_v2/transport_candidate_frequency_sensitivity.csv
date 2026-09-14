@@ -1,0 +1,5 @@
+excursion_definition,driver_code_5_6_scenario,frequency_assumption,coverage_n,coverage_total,coverage_share,unweighted_mean_rand,weighted_mean_rand,weighted_median_rand
+one_direction,A,5_trips_per_week_21.7_days_per_month,4556,4655,0.9787,21.24,19.97,10.5
+one_direction,A,7_trips_per_week_30_days_per_month,4556,4655,0.9787,21.1,19.83,10.5
+round_trip,A,5_trips_per_week_21.7_days_per_month,4556,4655,0.9787,42.0,39.45,20.0
+round_trip,A,7_trips_per_week_30_days_per_month,4556,4655,0.9787,41.86,39.3,20.0

@@ -33,12 +33,12 @@ population for cost purposes, not with walk/cycle/drive.
 
 ## The verified missingness breakdown (`transport_missingness.csv`)
 
-**SUPERSEDED, 2026-09-13 (later same day). The figures in this section use a leg-1-only reading
-and a since-withdrawn resolution of the `Q433bPay` category-list discrepancy. They are kept below
-for the record but are not current. See "Journey-level rebuild" and "`Q433bPay` reconciliation"
-further down for the corrected figures (2,165-2,235 zero / 2,394 usable / 12 ambiguous / 14-84
-nonresponse depending on the still-open Scenario A/B choice), which is what
-`transport_missingness.csv` now reports.**
+**SUPERSEDED, 2026-09-13, corrected further 2026-09-14. The figures in this section use a
+leg-1-only reading, a since-withdrawn resolution of the `Q433bPay` category-list discrepancy, and
+predate the numeric-zero/DNK classifier fixes. They are kept below for the record but are not
+current. See "Journey-level rebuild" and "`Q433bPay` reconciliation" further down for the current
+figures (2,169-2,239 zero / 2,390 usable / 12 ambiguous / 14-84 nonresponse depending on the
+still-open Scenario A/B choice), which is what `transport_missingness.csv` now reports.**
 
 - **2,183 of 4,655 (46.9%) are genuine zero fares**: 1,997 walkers, 27 cyclists, and 159 people
   in the hitchhike-or-listed-mode group who report `Q429b2Pay1` = "Do not pay" (verified: their
@@ -199,15 +199,36 @@ the NHTS 2020 person file:
   cross-period mixing is needed to classify them as positive, even though no monetary total is
   computed for them (see the provisional-reconstruction section below).
 
+**CORRECTED AGAIN, 2026-09-14 -- two further classifier bugs, both confirmed against Astra's
+independent source check.** Neither changes the total (still 2,408); both move records between
+buckets.
+
+1. **Numeric-zero handling.** A leg can be free in two different ways: `pay==7` ("do not pay",
+   an implied/skip-pattern zero -- the cost field is then genuinely not applicable) and a named
+   payment period (codes 1-4) paired with a reported cost of exactly R0 (an *answered* zero). The
+   classifier previously read cost fields only for their sentinel codes (`8888`/`9999` etc.) and
+   let a literal `0` fall through to "positive", which is wrong -- R0 is not a positive cost. Two
+   journeys move from fully-costed-positive to zero once this is fixed (both have their numeric
+   zero on leg 1: one coded "per single trip", one "per return trip").
+2. **DNK-as-unresolved.** The classifier previously let a positive leg silently override a "do not
+   know" payment-period leg elsewhere in the same journey into "fully costed". That is wrong: a
+   DNK leg's cost is genuinely unknown -- it could have been free or paid -- so a positive leg
+   elsewhere makes the journey's *total* not fully known, the same as an unspecified-cost leg
+   would. No journey in this dataset currently has both a positive leg and a DNK leg (the 2
+   partially-observed journeys below are both positive+ambiguous, not positive+DNK), so this fix
+   does not move any counts here, but it is now enforced and covered by a regression test
+   (`tests/test_transport_review_classification.py`) rather than left as an unnoticed gap.
+
 **Corrected journey-level classification, n=2,408 (hitchhike + listed-mode, all four legs
 considered together):**
 
 | class | n | definition |
 | --- | --- | --- |
-| legitimate zero | 141 | every administered leg is "do not pay" |
-| positive (usable), of which: | 2,256 | at least one leg has a confirmed numeric cost (2,238 on leg 1 + 18 reclassified from a later leg) |
-| &nbsp;&nbsp;fully costed | 2,254 | every administered leg resolves to a known value (zero fare or numeric cost), at least one positive |
-| &nbsp;&nbsp;partially observed | 2 | at least one leg has a confirmed positive cost, but at least one other administered leg is ambiguous/unspecified -- the journey involved real payment but its total is not fully known |
+| legitimate zero, of which: | 143 | every administered leg resolves to a known zero (stated "do not pay" or a named period with cost==0) |
+| &nbsp;&nbsp;involving a numeric (answered) zero leg | 2 | at least one zero leg is a named-period R0 answer, not a stated "do not pay" |
+| positive (usable), of which: | 2,254 | at least one leg has a confirmed numeric cost (2,236 on leg 1 + 18 reclassified from a later leg) |
+| &nbsp;&nbsp;fully costed | 2,252 | every administered leg resolves to a known value (zero fare or positive cost), at least one positive |
+| &nbsp;&nbsp;partially observed | 2 | at least one leg has a confirmed positive cost, but at least one other administered leg is unresolved (unspecified cost, internal inconsistency, or DNK) -- the journey involved real payment but its total is not fully known |
 | ambiguous | 7 | some leg has a named mode/period but an unspecified cost value, and no leg reaches a confirmed positive cost |
 | missing / nonresponse | 4 | the only administered leg's payment period itself is "do not know" |
 
@@ -215,23 +236,36 @@ The fully-costed/partially-observed split matters for any future point estimate:
 observed journey's *known* leg cost is real data (it should not be dropped as missing), but its
 *journey total* is not observable without an assumption about the unresolved leg, which is a
 different problem from the 7 purely ambiguous journeys where no leg total is known at all.
+Likewise, the numeric-zero split matters for interpretation, not for the estimate itself: both
+kinds of zero are equally R0 for a point estimate, but a stated "do not pay" and an answered R0
+are different response patterns worth keeping visible.
 
 This replaces the earlier leg-1-only figures (159 zero / 2,242 usable / 7 nonresponse, which also
 silently merged in the 4 "do not know" cases rather than reporting them separately) in
-`transport_missingness.csv`. The driver and walk/cycle rows are unaffected by this rebuild --
-drivers are asked a single pay/cost pair with no multi-leg structure, and walkers/cyclists never
-reach the `Q428bModeofTrv` block at all (confirmed from the instrument's enabling condition,
-recorded above).
+`transport_missingness.csv`. The driver and walk/cycle rows are unaffected by this specific
+journey-level rebuild -- drivers are asked a single pay/cost pair with no multi-leg structure
+(though drivers have their own, separately corrected, numeric-zero fix -- see below), and
+walkers/cyclists never reach the `Q428bModeofTrv` block at all (confirmed from the instrument's
+enabling condition, recorded above).
+
+**Driver numeric-zero fix, 2026-09-14.** The same bug affected the driver classifier: two drivers
+report a named payment period (codes 1-4) with `Q434bCost` reported as exactly R0. These were
+previously folded into the "usable numeric cost" (positive) count; they are now counted as
+legitimate zero fares instead. Driver `legitimate_zero` moves from 0 to 2; `usable_numeric_cost`
+(now consistently meaning strictly positive) moves from 138 to 136.
 
 **Total reconstruction, combining the transport-side rebuild with the driver-side `Q433bPay`
-ambiguity (Scenario A / B from above):**
+ambiguity (Scenario A / B from above), UPDATED 2026-09-14 for the numeric-zero corrections:**
 
 | | Scenario A | Scenario B |
 | --- | --- | --- |
-| Legitimate zero fares | 2,165 / 4,655 (46.5%) | 2,235 / 4,655 (48.0%) |
-| Usable numeric cost | 2,394 / 4,655 (51.4%) | 2,394 / 4,655 (51.4%) |
+| Legitimate zero fares | 2,169 / 4,655 (46.6%) | 2,239 / 4,655 (48.1%) |
+| Usable numeric cost (strictly positive) | 2,390 / 4,655 (51.3%) | 2,390 / 4,655 (51.3%) |
 | Ambiguous (named period, unspecified cost) | 12 / 4,655 (0.3%) | 12 / 4,655 (0.3%) |
 | Genuine nonresponse | 84 / 4,655 (1.8%) | 14 / 4,655 (0.3%) |
+
+("Legitimate zero fares" here includes both stated "do not pay" and numeric R0 answers; see the
+per-group breakdown above and in `transport_missingness.csv` for the split.)
 
 ## Provisional payment-conversion figures, review output only -- the canonical target is unchanged
 
@@ -247,9 +281,10 @@ assumption at all.
   instead defined as a return journey, a per-single-trip fare understates it by roughly half,
   absent a stated (and not yet made) doubling assumption. The correct statement is: the
   per-single-trip figures require no conversion **once the excursion definition is fixed to
-  one-direction**, and remain the numerically largest usable sub-population regardless (1,762
-  first-leg observations, mean R29.49, median R17), but "no adjustment under every definition" is
-  false and should not have been asserted.
+  one-direction**, and remain the numerically largest usable sub-population regardless (1,761
+  first-leg observations with a strictly positive cost, mean R29.50, median R17 -- one further
+  record with a numeric R0 cost moved to the legitimate-zero count on 2026-09-14), but "no
+  adjustment under every definition" is false and should not have been asserted.
 - **Per-return-trip, per-week, per-month and per-year observations are reported as raw figures
   only, with no divisor applied.** Halving a return-trip fare to approximate one direction
   assumes fare symmetry; converting a weekly/monthly figure to a daily or per-trip basis needs a
@@ -266,16 +301,18 @@ assumption at all.
   instead of the field's actual sentinel codes (confirmed live against
   `meta.variable_value_labels`: 8888 = Not applicable, 9999 = Unspecified). Five records carry
   `Q434bCost == 9999` and were counted as a literal R9,999 fare, which alone accounts for most of
-  the inflation (5 of 78/45/17 observations at R9,999 each, against true group sizes of
-  77/42/16). Astra reproduced the originally reported means exactly with those five records
-  included, confirming the mechanism. Correcting the sentinel exclusion (now handled explicitly
-  and field-specifically in `scripts/build_transport_review_tables.py`): **per-single-trip mean
-  R96.60 (n=77), per-return-trip mean R260.31 (n=42), per-week mean R353.12 (n=16)**. These are
-  still somewhat right-skewed relative to their medians (R80, R200, R300 respectively), which is
-  unremarkable for cost data and needs no special explanation; the previous inter-city-travel
-  story was invented to explain an artifact, not a real feature of the data, and should not be
-  repeated. Codes 1-4 only; the disputed codes 5/6 (Scenario A/B above) remain excluded from this
-  table entirely rather than assigned to either scenario by default.
+  the inflation. Astra reproduced the originally reported means exactly with those five records
+  included, confirming the mechanism. **CORRECTED AGAIN, 2026-09-14 (same day): two of the
+  originally reported n's also included a numeric-zero record (`Q434bCost==0`) as if it were a
+  positive fare** -- those 2 records are now counted as legitimate zero fares instead (see above).
+  With both corrections applied (now handled explicitly and field-specifically in
+  `scripts/build_transport_review_tables.py`): **per-single-trip mean R97.87 (n=76), per-return-trip
+  mean R266.66 (n=41), per-week mean R353.12 (n=16, unaffected -- neither numeric-zero record fell
+  in this period)**. Still somewhat right-skewed relative to their medians (R80, R200, R300
+  respectively), which is unremarkable for cost data and needs no special explanation; the previous
+  inter-city-travel story was invented to explain an artifact, not a real feature of the data, and
+  should not be repeated. Codes 1-4 only; the disputed codes 5/6 (Scenario A/B above) remain
+  excluded from this table entirely rather than assigned to either scenario by default.
 - **Restricted population, stated explicitly**: all figures above are conditional on
   `Q47Travlooking==Yes` (travelled while job-searching on the reference day) and a usable payment
   record for at least one leg; this is the same conditioning already documented for

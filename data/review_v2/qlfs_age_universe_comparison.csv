@@ -1,0 +1,3 @@
+age_universe,description,q4_eligible_n,q1_eligible_n,matched_n,unmatched_share_vs_q4,unmatched_share_vs_q1
+15_plus,age 15+ (no upper bound; the universe Status is actually derived for),46032,45873,30977,0.3271,0.3247
+15_to_64,age 15-64 (discouraged_share/long_term_share convention),40854,40666,27223,0.3337,0.3306
