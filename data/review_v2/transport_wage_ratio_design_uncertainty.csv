@@ -1,5 +1,5 @@
-point_estimate,weighted_mean_cost_rand,weighted_median_monthly_wage_rand,daily_wage_rand,jackknife_se,ci_95_lo,ci_95_hi,n_replicates,cost_n,wage_n,population,driver_code_5_6_scenario,excursion_definition,freq_days_per_week
-0.1997,39.58,4300.0,198.16,0.0153,0.1697,0.2297,6039,4539,20503,15_to_64_primary,A,round_trip,5
-0.1972,39.08,4300.0,198.16,0.0151,0.1676,0.2269,6039,4607,20503,15_to_64_primary,B,round_trip,5
-0.1991,39.45,4300.0,198.16,0.0225,0.155,0.2431,6039,4556,20867,broader_age_sensitivity,A,round_trip,5
-0.1965,38.94,4300.0,198.16,0.0222,0.153,0.24,6039,4626,20867,broader_age_sensitivity,B,round_trip,5
+point_estimate,weighted_mean_cost_rand,weighted_median_monthly_wage_rand,daily_wage_rand,bootstrap_se,ci_95_lo_percentile,ci_95_hi_percentile,n_boot,seed,cost_n,wage_n,n_distinct_replicate_medians,population,driver_code_5_6_scenario,excursion_definition,freq_days_per_week,cost_only_jackknife_reference_se
+0.1997,39.58,4300.0,198.16,0.0117,0.1823,0.2269,2000,42,4539,20503,22,15_to_64_primary,A,round_trip,5,0.00918
+0.1972,39.08,4300.0,198.16,0.0115,0.1802,0.2243,2000,42,4607,20503,22,15_to_64_primary,B,round_trip,5,0.00905
+0.1991,39.45,4300.0,198.16,0.0117,0.1822,0.2266,2000,42,4556,20867,24,broader_age_sensitivity,A,round_trip,5,0.00915
+0.1965,38.94,4300.0,198.16,0.0116,0.1798,0.2237,2000,42,4626,20867,24,broader_age_sensitivity,B,round_trip,5,0.00902

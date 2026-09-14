@@ -46,19 +46,21 @@ Sample definitions, stated explicitly:
   days/month (the same methodology already used for the canonical
   `transport_budget_share` moment, reproduced live here, not re-derived).
 
-| population | driver scenario | point estimate | design-based 95% CI | jackknife SE |
+| population | driver scenario | point estimate | design-based 95% CI (percentile bootstrap) | bootstrap SE |
 | --- | --- | --- | --- | --- |
-| **15-64 (PROPOSED primary)** | A | **0.1997** | [0.1697, 0.2297] | 0.0153 |
-| **15-64 (PROPOSED primary)** | B | **0.1972** | [0.1676, 0.2269] | 0.0151 |
-| broader age (sensitivity) | A | 0.1991 | [0.1550, 0.2431] | 0.0225 |
-| broader age (sensitivity) | B | 0.1965 | [0.1530, 0.2400] | 0.0222 |
+| **15-64 (PROPOSED primary)** | A | **0.1997** | [0.1823, 0.2269] | 0.0117 |
+| **15-64 (PROPOSED primary)** | B | **0.1972** | [0.1802, 0.2243] | 0.0115 |
+| broader age (sensitivity) | A | 0.1991 | [0.1822, 0.2266] | 0.0117 |
+| broader age (sensitivity) | B | 0.1965 | [0.1798, 0.2237] | 0.0116 |
 
-Full detail in `transport_wage_ratio_design_uncertainty.csv`. The population choice
-moves the point estimate by under 0.3%; it moves the DESIGN-BASED UNCERTAINTY
-noticeably more (SE 0.0151-0.0153 under 15-64 vs. 0.0222-0.0225 under the broader
-range) -- restricting age removes some of the between-PSU variability along with the
-excluded observations. The driver-scenario choice moves the point estimate by under
-1.5% throughout, consistently smaller than the population effect on uncertainty.
+Full detail in `transport_wage_ratio_design_uncertainty.csv`. Point estimates are
+UNCHANGED from the prior round (the uncertainty correction below does not move
+them). The population and driver-scenario choices both move the point estimate by
+under 1.5%, and -- once the uncertainty calculation itself is corrected (see below)
+-- also move the SE only marginally (0.0115-0.0117 across all four rows). **The
+previous claim that the population choice caused a large, systematic difference in
+uncertainty is withdrawn**; that appearance was an artefact of the withdrawn
+jackknife's instability, not a real population effect -- see below.
 
 **This candidate ratio (~0.197-0.200) remains roughly double the current canonical
 `transport_budget_share` value of 0.1058**, for the reasons already documented in
@@ -66,44 +68,106 @@ excluded observations. The driver-scenario choice moves the point estimate by un
 without payment-period conversion and treats ambiguous/DNK costs as R0). Not proposed
 as a replacement value.
 
-## Sampling uncertainty: design-based, not independent resampling
+## Sampling uncertainty: design-based survey bootstrap, WITHDRAWN AND CORRECTED 2026-09-14
 
-**A real correction from the prior round.** The previous bootstrap resampled the cost
-(traveller) and wage populations independently -- an inadequate default, because the
-two samples share 1,113 households (verified live: 3,955 traveller households,
-16,064 wage households, 1,113 in both). This specification instead joins the NHTS
-2020 GEOGRAPHY file (`nhts-2020-geog.dta`: `Uqno`, `Psuno_seg`, `Stratum`) to the
-person file on `Uqno` -- a unique household join, 0 unmatched person records, 6,039
-PSU/segment identifiers, 90 strata (all confirmed live, matching an independent
-source check exactly) -- and builds a **stratified delete-1 jackknife (JK1) over
-PSU/segments**: each replicate drops one PSU, reweights the surviving PSUs in that
-PSU's stratum by n_h/(n_h-1), and recomputes the weighted cost mean AND the weighted
-wage median TOGETHER from the same replicate's weights, so a shared household moves
-both sides of the ratio together rather than independently.
+**The stratified delete-1 jackknife (JK1) used earlier this round is withdrawn, not
+merely superseded.** The prior write-up treated a joint household-level jackknife as
+the fix for independent resampling; it was a genuine improvement on that one point
+(preserving the shared-household structure) but introduced a different, more serious
+problem: the ratio's denominator is a **weighted median**, and ordinary delete-1
+jackknife variance estimation is not generally valid for quantiles (Efron 1982; Shao
+& Wu 1989). A median's influence function is not smooth -- removing one PSU either
+leaves the median completely unchanged (if the PSU held none of the pivotal
+observations) or moves it by a large, discrete jump (if it did). Astra's independent
+check confirmed this concretely: the wage median changed in only **9 of 6,039**
+replicates under the 15-64 population and **25 of 6,039** under the broader-age
+population. The jackknife variance formula sums squared deviations across all
+replicates; with the overwhelming majority contributing exactly zero and a handful
+contributing large, noisy jumps, the resulting "SE" is not a trustworthy estimate of
+sampling variance -- its size relative to the earlier independent bootstrap proves
+nothing about its accuracy.
+
+**Three specific claims from the withdrawn write-up are retracted:**
+1. That the jackknife SE being larger than the earlier independent-bootstrap SE
+   "confirmed" the jackknife was more accurate. A larger SE from an invalid method is
+   not evidence of anything; validity depends on whether the method suits the
+   statistic, not on the number it produces.
+2. That shared-household dependence between the cost and wage samples "necessarily"
+   inflates the ratio's variance. Dependence can inflate OR deflate variance depending
+   on the sign of the within-household correlation between a person's transport cost
+   and their household's wage -- that correlation was never estimated, so no
+   direction should have been asserted.
+3. That the SE difference between the 15-64 and broader-age populations was explained
+   by "reduced between-PSU variability" from the age restriction. That explanation was
+   built on numbers now known to be unreliable and is withdrawn along with them; the
+   corrected bootstrap SEs below barely differ by population (0.0115-0.0117), so there
+   was no real effect to explain in the first place.
+
+**Replacement: a stratified WITH-REPLACEMENT PSU bootstrap ("survey bootstrap"),
+valid for nonsmooth statistics including quantiles** (Rao & Wu 1988; Field & Welsh
+2007). Each replicate independently draws n_h PSUs WITH replacement from the n_h PSUs
+observed in stratum h; a PSU drawn m times has its records' weights multiplied by m
+(0 if not drawn). Cost and wage weights are built from the SAME per-replicate PSU
+draw across both samples, so a shared household's cost and wage records still move
+together -- the one part of the withdrawn jackknife's design that was correct is
+preserved here.
+
+**Verified against a reference implementation.** The jackknife IS valid for a smooth
+statistic -- the cost-side weighted mean -- so a cost-only jackknife (wage held fixed
+at its full-sample value) gives a trustworthy figure: SE = 0.00905 (15-64) / 0.00902
+(broader age), reproducing Astra's reported figures exactly. Running the new
+bootstrap under the same wage-fixed isolation converges to a closely matching figure
+(0.00880-0.00918 across the four rows, within ordinary Monte Carlo noise of the
+trusted reference), confirming the bootstrap machinery is correctly calibrated before
+trusting its full joint result. See `transport_wage_ratio_bootstrap_verification.csv`.
+
+**Inspected replicate-median behaviour.** Across 2,000 bootstrap replicates, the
+resampled wage median takes on 22-24 distinct values with a genuinely spread,
+multi-modal distribution (e.g. under the 15-64/Scenario B design: 738 replicates at
+R4,345, 419 at R4,000, 330 at R4,200, and 19 further distinct values) -- a
+qualitatively different, far richer picture than the jackknife's near-degenerate
+5-values-in-6,039-replicates pathology. See
+`transport_wage_ratio_bootstrap_median_distribution.csv`.
+
+**Inspected interval stability.** SE and the 95% percentile CI are stable across
+replicate counts (1,000-4,000) and random seeds, moving only within ordinary Monte
+Carlo noise:
+
+| n_boot | seed | SE | 95% CI |
+| --- | --- | --- | --- |
+| 1,000 | 100 | 0.0122 | [0.1782, 0.2264] |
+| 2,000 | 200 | 0.0114 | [0.1793, 0.2236] |
+| 2,000 | 201 | 0.0116 | [0.1797, 0.2242] |
+| 4,000 | 300 | 0.0113 | [0.1804, 0.2246] |
+
+Full detail in `transport_wage_ratio_bootstrap_stability.csv`. B=2,000 (seed 42) is
+used for the primary reported figures.
 
 **Documented approximations** (no design information is available to resolve these
 further from the files at hand):
 1. No official NHTS replicate weights exist in the public-use file (confirmed: no
    jk/rep/brr/fay/bootstrap/pweight/fpc-named column in either file's metadata) --
-   this jackknife is CONSTRUCTED here from `Stratum`+`Psuno_seg`, not looked up, and
+   this bootstrap is CONSTRUCTED here from `Stratum`+`Psuno_seg`, not looked up, and
    may not exactly match whichever internal variance-estimation design StatsSA itself
    uses.
 2. No finite-population correction is applied -- the standard with-replacement
    assumption for national household surveys where PSUs are a small fraction of the
    frame, not independently verified here since the overall sampling fraction is not
    published in the files available.
-3. Every stratum has at least 29 PSUs (median 58.5), so no stratum-collapsing was
-   needed for the jackknife to be well-defined -- unlike some survey designs, this
-   was not a live concern here.
+3. The simple with-replacement-PSU bootstrap is used rather than the more elaborate
+   Rao-Wu rescaling bootstrap, for transparency and because every stratum has at
+   least 29 PSUs (median 58.5) -- large enough that the two variants' small-sample
+   corrections are expected to differ negligibly. This is the standard large-n_h
+   justification for the simplification, not independently proven here.
 
-**The design-based SE (0.015-0.023 depending on population) is 60-140% larger than
-the previous independent-resampling bootstrap SE (0.0094).** This is the expected
-direction: naive independent resampling ignores both PSU-level clustering (people in
-the same primary sampling unit are more alike than a simple random sample would
-assume) and the shared-household correlation between the cost and wage sides, both of
-which inflate the true sampling variance. The previous bootstrap SE should be treated
-as understated and is superseded by the figures in this section, not read alongside
-them as an equally valid alternative.
+**The corrected bootstrap SE (0.0115-0.0117) is close to, and only modestly above,
+the earlier independent-resampling bootstrap SE (0.0094) and the trusted cost-only
+reference SE (~0.009).** Unlike the withdrawn jackknife figures, this is a coherent,
+internally consistent picture: joint (design-aware) resampling adds a modest amount
+of variance on top of the cost-only reference, roughly consistent in direction and
+magnitude with genuine PSU-level clustering and median-related sampling variability,
+without the earlier method's spurious inflation or its unsupported population-effect
+story.
 
 ## Frequency sensitivity, CORRECTED description
 
@@ -118,22 +182,29 @@ are not combined into a single interval.
 
 ## Coverage: directly supported vs. requires a frequency assumption
 
-Carried forward unchanged from `transport_candidate_estimates.md` (computed on the
-broader-age population; the 15-64 restriction changes the denominator slightly but
-not the qualitative picture): roughly 97-98% of the population is resolved using only
-per-single/per-return legs (no frequency assumption needed at all), ~1.2% additionally
-needs a per-week/per-month leg (frequency-dependent), and the remainder is unresolved
-(ambiguous/DNK/internal-inconsistency/per-year legs, excluded from every candidate
-rather than imputed). This is a THIRD, separate kind of sensitivity from sampling
-uncertainty and frequency-assumption sensitivity -- it describes how much of the
-population a given candidate specification can actually resolve at all, not how
-uncertain or how assumption-dependent the resolved estimate is.
+**Regenerated exactly for the 15-64 primary population, 2026-09-14** (previously
+assumed, not computed, to be qualitatively similar to the broader-age figures). Full
+detail in `transport_candidate_coverage_15_64.csv`.
+
+| driver scenario | directly supported (weighted) | requires frequency (weighted, additional) | unresolved (weighted) | n (of 4,636 age-eligible) |
+| --- | --- | --- | --- | --- |
+| A | 96.79% | 1.24% | 1.97% | 4,539 resolved |
+| B | 98.03% | 1.24% | 0.73% | 4,607 resolved |
+
+These are close to, but not identical to, the previously-reported broader-age figures
+(96.77%/98.04% direct, 1.99%/0.72% unresolved on the 4,655-person population) -- the
+19 excluded travellers move the denominator slightly without changing the qualitative
+picture. This is a THIRD, separate kind of sensitivity from sampling uncertainty and
+frequency-assumption sensitivity -- it describes how much of the population a given
+candidate specification can actually resolve at all, not how uncertain or how
+assumption-dependent the resolved estimate is.
 
 ## Summary: three distinct kinds of uncertainty/sensitivity, kept separate
 
-1. **Sampling uncertainty** (design-based jackknife SE/CI): reflects the survey's
-   sample size and design (clustering, shared households) -- would remain even if
-   every open specification choice were resolved.
+1. **Sampling uncertainty** (design-based survey-bootstrap SE/CI, joint PSU/stratum
+   resampling of numerator and denominator together): reflects the survey's sample
+   size and design (clustering, shared households) -- would remain even if every open
+   specification choice were resolved.
 2. **Specification sensitivity** (driver Scenario A/B, frequency assumption, age
    population): reflects genuinely open analytical choices -- would shrink to zero if
    a single choice were adopted for each.

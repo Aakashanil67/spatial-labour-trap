@@ -112,17 +112,25 @@ computed relative to the freq=7 end; recomputed under the 15-64 primary populati
 stated here previously -- the frequency assumption still does not matter much for
 this aggregate, but the earlier rounding understated the swing slightly.
 
-## Candidate transport-to-wage ratio: SUPERSEDED by design-based uncertainty
+## Candidate transport-to-wage ratio: SUPERSEDED by a design-based survey bootstrap
 
-**The bootstrap uncertainty below is superseded, 2026-09-14, by a design-based
-jackknife -- see `transport_measurement_specification.md` and
-`transport_wage_ratio_design_uncertainty.csv` for the current figures.** It resampled
-the cost and wage populations INDEPENDENTLY, which understates the true sampling
-variance: the two samples share 1,113 households, and independent resampling ignores
-both that shared-household correlation and PSU-level clustering. The corrected,
-design-based SE (0.015-0.023 depending on population) is 60-140% larger. The point
-estimates below are still correct (unchanged by the uncertainty correction) and are
-kept for the record; the CI/SE columns should not be used.
+**The bootstrap uncertainty below (independent resampling of cost and wage) is
+superseded, 2026-09-14, by a design-based, JOINT stratified PSU bootstrap -- see
+`transport_measurement_specification.md` and
+`transport_wage_ratio_design_uncertainty.csv` for the current figures.** Two rounds
+of correction happened here, not one: first, independent resampling of cost and wage
+was replaced with a joint delete-1 jackknife over PSUs (correcting the
+shared-household problem, since the two samples have 1,113 households in common);
+then that jackknife was itself withdrawn, because ordinary jackknife variance
+estimation is not valid for a statistic containing a weighted median (verified: the
+wage median changed in only 9-25 of 6,039 jackknife replicates, a textbook
+quantile-jackknife pathology). The current figures use a stratified
+with-replacement PSU bootstrap instead, valid for medians, verified against a smooth
+-statistic reference implementation. Current SE is 0.0115-0.0117 across population
+and driver scenario -- close to, not dramatically larger than, the independent
+bootstrap SE below. The point estimates below are still correct (unchanged by either
+uncertainty correction) and are kept for the record; the CI/SE columns should not be
+used.
 
 Built by applying the SAME wage-side methodology already used for the canonical
 `transport_budget_share` moment (see `notebooks/moments/02_transport_budget_share.ipynb`):

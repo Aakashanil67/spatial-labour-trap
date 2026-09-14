@@ -1,0 +1,5 @@
+excursion_definition,driver_code_5_6_scenario,freq_days_per_week,population,coverage_n_directly_supported,coverage_n_requires_frequency,coverage_n_unresolved,coverage_n_total,unweighted_coverage_share_direct,unweighted_coverage_share_total,weighted_coverage_share_direct,weighted_coverage_share_total,weighted_mean_rand,weighted_median_rand,unweighted_mean_rand_diagnostic
+round_trip,A,5,15_to_64_primary,4488,51,97,4636,0.9681,0.9791,0.9679,0.9803,39.58,21.0,42.13
+round_trip,B,5,15_to_64_primary,4556,51,29,4636,0.9827,0.9937,0.9803,0.9927,39.08,20.0,41.51
+one_direction,A,5,15_to_64_primary,4488,51,97,4636,0.9681,0.9791,0.9679,0.9803,19.79,10.5,21.06
+one_direction,B,5,15_to_64_primary,4556,51,29,4636,0.9827,0.9937,0.9803,0.9927,19.54,10.0,20.75

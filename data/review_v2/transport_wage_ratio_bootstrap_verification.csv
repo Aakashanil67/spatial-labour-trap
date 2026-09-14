@@ -1,0 +1,3 @@
+check,value,note
+cost_only_jackknife_reference_se,0.00905,"Valid jackknife SE for the smooth cost-mean statistic alone, wage fixed."
+cost_only_bootstrap_se_wage_fixed,0.0088,Bootstrap SE under the same wage-fixed isolation -- should be close to the reference above.
