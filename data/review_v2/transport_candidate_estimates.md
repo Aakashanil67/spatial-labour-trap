@@ -1,5 +1,10 @@
 # Decision-ready candidate transport-cost estimates, 2026-09-14 -- review output only
 
+**For the current, consolidated point estimates, design-based uncertainty and
+15-64-population proposal, see `transport_measurement_specification.md` -- it
+supersedes this file's uncertainty and frequency-description sections (marked below)
+without changing this file's point estimates or coverage figures.**
+
 ## What this is, and what it is not
 
 This is a set of candidate person-level transport-cost estimates, computed from ALL
@@ -100,13 +105,24 @@ search days/week -- from much less frequent search (once a week) to daily:
 | 5 (primary, borrowed from wage-side convention) | R39.45 | R19.72 |
 | 7 (daily) | R39.30 | R19.65 |
 
-Full detail in `transport_candidate_frequency_sensitivity.csv`. Across this bounded
-5x range (1 to 7 days/week), the weighted mean moves by under 5% (R41.46 to R39.30
-under round_trip) -- the frequency assumption genuinely does not matter much for THIS
-aggregate, because the week/month sub-population is small. This is now a defensible
-claim across a real range, not an extrapolation from one narrow comparison.
+Full detail in `transport_candidate_frequency_sensitivity.csv`. **CORRECTED
+2026-09-14: the swing across this range is approximately 5.5%** (5.48% precisely,
+computed relative to the freq=7 end; recomputed under the 15-64 primary population in
+`transport_candidate_frequency_sensitivity_15_64.csv`), not the "under 5%" figure
+stated here previously -- the frequency assumption still does not matter much for
+this aggregate, but the earlier rounding understated the swing slightly.
 
-## Candidate transport-to-wage ratio, with uncertainty and driver-code sensitivity
+## Candidate transport-to-wage ratio: SUPERSEDED by design-based uncertainty
+
+**The bootstrap uncertainty below is superseded, 2026-09-14, by a design-based
+jackknife -- see `transport_measurement_specification.md` and
+`transport_wage_ratio_design_uncertainty.csv` for the current figures.** It resampled
+the cost and wage populations INDEPENDENTLY, which understates the true sampling
+variance: the two samples share 1,113 households, and independent resampling ignores
+both that shared-household correlation and PSU-level clustering. The corrected,
+design-based SE (0.015-0.023 depending on population) is 60-140% larger. The point
+estimates below are still correct (unchanged by the uncertainty correction) and are
+kept for the record; the CI/SE columns should not be used.
 
 Built by applying the SAME wage-side methodology already used for the canonical
 `transport_budget_share` moment (see `notebooks/moments/02_transport_budget_share.ipynb`):
@@ -114,14 +130,12 @@ weighted median monthly wage over NHTS respondents with a usable `Q410Salary` +
 `Q411Payperiod`, converted to a daily rate at 21.7 working days/month, reproduced live
 here (n=20,867, weighted median R4,300.00, daily wage R198.16 -- exact match to the
 notebook's own figures). The numerator is the primary (round_trip, weighted) candidate
-transport-cost mean from above. Uncertainty is a weighted bootstrap (2,000 resamples,
-cost and wage populations resampled independently each draw, person weight as
-resampling probability), matching the canonical moment's own bootstrap method exactly.
+transport-cost mean from above.
 
-| driver scenario | point estimate | 95% bootstrap CI | bootstrap SE |
+| driver scenario | point estimate | ~~95% bootstrap CI (superseded)~~ | ~~bootstrap SE (superseded)~~ |
 | --- | --- | --- | --- |
-| A | **0.1991** | [0.1846, 0.2214] | 0.0094 |
-| B | **0.1965** | [0.1815, 0.2184] | 0.0094 |
+| A | **0.1991** | ~~[0.1846, 0.2214]~~ | ~~0.0094~~ |
+| B | **0.1965** | ~~[0.1815, 0.2184]~~ | ~~0.0094~~ |
 
 **Sample definitions, stated explicitly:**
 - Transport-cost numerator: job-search travellers (`Q47Travlooking==Yes`) across
@@ -149,11 +163,13 @@ correction is visible ahead of the actual measurement-specification decision.
 
 ## What remains genuinely open
 
-The excursion definition is now proposed as round_trip (primary) rather than left
-symmetric between two options, consistent with the model's own existing convention --
-but this is a PROPOSAL for review, not an adopted decision, and one_direction remains
-reported as a first-class comparison. The driver Scenario A/B choice, the exact
-frequency assumption (though shown to matter little in aggregate), and whether/how to
-adopt any of this as `transport_budget_share` all remain open. No
-`transport_budget_share` value is reported or implied as a replacement for the
-current 0.1058.
+The excursion definition and person weighting are now treated as SETTLED (round-trip,
+weighted) for the purposes of this specification -- see
+`transport_measurement_specification.md`. **2026-09-14: ages 15-64 is proposed as the
+primary population** for both the transport numerator and the wage benchmark (full
+detail and point estimates in `transport_measurement_specification.md`); this remains
+a PROPOSAL, not an adopted decision. The driver Scenario A/B choice, the exact
+frequency assumption (shown to matter little in aggregate, ~5.5% across the tested
+range), and whether/how to adopt any of this as `transport_budget_share` all remain
+open. No `transport_budget_share` value is reported or implied as a replacement for
+the current 0.1058.

@@ -1,0 +1,11 @@
+excursion_definition,freq_days_per_week,population,n,weighted_mean_rand
+round_trip,1,15_to_64_primary,4539,41.59
+round_trip,2,15_to_64_primary,4539,40.33
+round_trip,3,15_to_64_primary,4539,39.91
+round_trip,5,15_to_64_primary,4539,39.58
+round_trip,7,15_to_64_primary,4539,39.43
+one_direction,1,15_to_64_primary,4539,20.8
+one_direction,2,15_to_64_primary,4539,20.17
+one_direction,3,15_to_64_primary,4539,19.96
+one_direction,5,15_to_64_primary,4539,19.79
+one_direction,7,15_to_64_primary,4539,19.72
