@@ -1,0 +1,4 @@
+moment,point_estimate,kish_se,household_cluster_bootstrap_se,ratio_cluster_to_kish
+discouraged_share,0.134282,0.002317,0.003127,1.349
+employment_share,0.584642,0.003349,0.003861,1.153
+long_term_share,0.774421,0.005357,0.005986,1.118
