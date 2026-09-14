@@ -205,9 +205,16 @@ considered together):**
 | class | n | definition |
 | --- | --- | --- |
 | legitimate zero | 141 | every administered leg is "do not pay" |
-| positive (usable) | 2,256 | at least one leg has a confirmed numeric cost (2,238 on leg 1 + 18 reclassified from a later leg) |
+| positive (usable), of which: | 2,256 | at least one leg has a confirmed numeric cost (2,238 on leg 1 + 18 reclassified from a later leg) |
+| &nbsp;&nbsp;fully costed | 2,254 | every administered leg resolves to a known value (zero fare or numeric cost), at least one positive |
+| &nbsp;&nbsp;partially observed | 2 | at least one leg has a confirmed positive cost, but at least one other administered leg is ambiguous/unspecified -- the journey involved real payment but its total is not fully known |
 | ambiguous | 7 | some leg has a named mode/period but an unspecified cost value, and no leg reaches a confirmed positive cost |
 | missing / nonresponse | 4 | the only administered leg's payment period itself is "do not know" |
+
+The fully-costed/partially-observed split matters for any future point estimate: a partially
+observed journey's *known* leg cost is real data (it should not be dropped as missing), but its
+*journey total* is not observable without an assumption about the unresolved leg, which is a
+different problem from the 7 purely ambiguous journeys where no leg total is known at all.
 
 This replaces the earlier leg-1-only figures (159 zero / 2,242 usable / 7 nonresponse, which also
 silently merged in the 4 "do not know" cases rather than reporting them separately) in
@@ -234,10 +241,15 @@ review-only breakdown, in `data/review_v2/transport_provisional_reconstruction.c
 *unconverted* cost figures by stated payment period -- i.e. only conversions that require no
 assumption at all.
 
-- **Per-single-trip costs need no conversion under any excursion definition**: 1,762 first-leg
-  observations, mean R29.49, median R17. This is the only sub-population whose reported number is
-  already directly usable regardless of how the excursion (one-direction vs. return) question is
-  eventually decided.
+- **CORRECTED, 2026-09-14: the claim that per-single-trip costs need no conversion "under any
+  excursion definition" was wrong and is withdrawn.** A per-single-trip figure is only
+  adjustment-free if the excursion is itself defined as a one-direction trip. If the excursion is
+  instead defined as a return journey, a per-single-trip fare understates it by roughly half,
+  absent a stated (and not yet made) doubling assumption. The correct statement is: the
+  per-single-trip figures require no conversion **once the excursion definition is fixed to
+  one-direction**, and remain the numerically largest usable sub-population regardless (1,762
+  first-leg observations, mean R29.49, median R17), but "no adjustment under every definition" is
+  false and should not have been asserted.
 - **Per-return-trip, per-week, per-month and per-year observations are reported as raw figures
   only, with no divisor applied.** Halving a return-trip fare to approximate one direction
   assumes fare symmetry; converting a weekly/monthly figure to a daily or per-trip basis needs a
@@ -247,13 +259,23 @@ assumption at all.
   mechanical /21.7 divide -- reusing the wage side's working-days convention without checking it
   fits a job-search trip frequency -- is exactly the risk the plan already flags; it is not
   applied here.
-- **Driver per-period costs (codes 1-4 only, n=143) are reported the same way**, restricted to
-  the unambiguous codes; the disputed codes 5/6 (Scenario A/B above) are excluded from this table
-  entirely rather than assigned to either scenario by default. Driver costs are noticeably
-  higher and more right-skewed than passenger costs at every payment period (e.g. per-single-trip
-  mean R223.55 vs. median R80, against R29.49/R17 for passengers) -- plausibly a mix of short
-  local trips and longer, inter-city job searches among car owners, not investigated further this
-  round.
+- **CORRECTED, 2026-09-14: the driver per-period means reported previously (R223.55 single-trip,
+  R909.56 return-trip, R920.53 weekly) were wrong, and the "inter-city travel" explanation offered
+  for their skew is withdrawn as unsupported.** The scratch script that produced those figures
+  excluded only the placeholder sentinel `-998` from `Q434bCost`, which never occurs in the data,
+  instead of the field's actual sentinel codes (confirmed live against
+  `meta.variable_value_labels`: 8888 = Not applicable, 9999 = Unspecified). Five records carry
+  `Q434bCost == 9999` and were counted as a literal R9,999 fare, which alone accounts for most of
+  the inflation (5 of 78/45/17 observations at R9,999 each, against true group sizes of
+  77/42/16). Astra reproduced the originally reported means exactly with those five records
+  included, confirming the mechanism. Correcting the sentinel exclusion (now handled explicitly
+  and field-specifically in `scripts/build_transport_review_tables.py`): **per-single-trip mean
+  R96.60 (n=77), per-return-trip mean R260.31 (n=42), per-week mean R353.12 (n=16)**. These are
+  still somewhat right-skewed relative to their medians (R80, R200, R300 respectively), which is
+  unremarkable for cost data and needs no special explanation; the previous inter-city-travel
+  story was invented to explain an artifact, not a real feature of the data, and should not be
+  repeated. Codes 1-4 only; the disputed codes 5/6 (Scenario A/B above) remain excluded from this
+  table entirely rather than assigned to either scenario by default.
 - **Restricted population, stated explicitly**: all figures above are conditional on
   `Q47Travlooking==Yes` (travelled while job-searching on the reference day) and a usable payment
   record for at least one leg; this is the same conditioning already documented for
@@ -263,3 +285,14 @@ No frequency assumption, excursion definition, or driver-code-5/6 scenario choic
 The next step remains exactly what "What is not yet done" above already lists: those four
 decisions, in order, before any single `transport_budget_share` reconstruction can be compared
 against the current 0.1058.
+
+## Reproducibility, 2026-09-14
+
+`transport_missingness.csv` and `transport_provisional_reconstruction.csv` are no longer produced
+by uncommitted scratch scripts. Both regenerate from `scripts/build_transport_review_tables.py`
+(`python -m scripts.build_transport_review_tables`, requires `THESIS_DATA_ROOT`), which handles
+each field's sentinel codes explicitly and per-leg (leg 1 and legs 2-4 of the listed-mode block do
+not share a sentinel convention, and the driver fields use a third convention again -- see the
+script's own docstring), and distinguishes fully-costed from partially-observed journeys and
+numeric zero from positive cost, rather than leaving those distinctions implicit in prose. Running
+it reproduces every number in this document.
