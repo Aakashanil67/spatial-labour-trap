@@ -168,9 +168,24 @@ in front of me, and drivers genuinely could report "per year"/"package trips."
 
 `transport_missingness.csv` reports both scenarios explicitly in its `detail` column and does not
 pick one. Anyone using this file for a point estimate must decide between them first; the 70-case
-swing (31% of all 223 drivers) is too large to leave implicit. A decisive check would need the
-official DataFirst codebook/data dictionary for this release (a third, independent source), which
-has not been fetched this round.
+swing (31% of all 223 drivers) is too large to leave implicit.
+
+**DataFirst codebook checked, 2026-09-14 (Astra review, finding 6) -- inconclusive, NOT a third
+independent source.** Astra fetched the DataFirst catalogue entry for `Q433bPay`
+(`https://www.datafirst.uct.ac.za/dataportal/index.php/catalog/886/variable/V838`) and reported
+that it repeats the exported `.dta`'s value labels (1-4 as usual, then 5:"Per year", 6:"Package
+trips/Buying points", 8:"Not applicable", 9:"Unspecified") -- NOT the instrument's printed
+"Do not pay"/"Do not know". Independently re-fetched here this pass and confirmed exactly:
+same codes, same labels. This does not adjudicate Scenario A vs. B: DataFirst's online catalogue
+is very likely generated FROM the same exported `.dta` metadata already checked, not an
+independently curated codebook, so finding the same labels there is expected under either
+scenario and provides no new evidence. **This check is ordinary source verification, not a
+research decision -- it has now been done (with a null result), and the DataFirst catalogue
+should not be listed as an outstanding "third source" step any more.** The instrument PDF itself
+(pages 38-39) remains the one source that disagrees with the exported labels; resolving Scenario
+A vs. B would need either the underlying CAPI application's own field definitions (not public) or
+StatsSA confirming which document is authoritative -- neither obtained this pass. Scenario A/B
+remains genuinely unresolved, carried forward unchanged.
 
 ## Journey-level rebuild of zero / positive / ambiguous / missing, 2026-09-13
 
@@ -320,10 +335,29 @@ assumption at all.
   return-trip -- "what the average driver reporting this period pays, including those who paid
   nothing") as distinct, separately labelled rows, rather than only the positive-only figure with
   the zero-inclusive question unanswerable from the file.
-- **Restricted population, stated explicitly**: all figures above are conditional on
-  `Q47Travlooking==Yes` (travelled while job-searching on the reference day) and a usable payment
-  record for at least one leg; this is the same conditioning already documented for
-  `transport_budget_share`'s numerator in `target_dictionary.csv` and is not a new restriction.
+- **Restricted population, stated explicitly, reference period CORRECTED 2026-09-14 (Astra
+  review, finding 2)**: all figures above are conditional on `Q47Travlooking==Yes` and a usable
+  payment record for at least one leg. **`Q47Travlooking` (question 4.7) asks whether the
+  respondent made any job-search or business-starting trip in the previous Monday-to-Sunday
+  WEEK, not on a single reference day** -- this project's own prior documentation (here and in
+  `target_dictionary.csv`) wrongly called it a "reference day"/"single reported travel day"
+  question, most consequentially in the claim that the survey's design directly supports a
+  person-window MEAN (`transport_measurement_specification.md`, `REVIEW_HANDOFF.md` section 6.5).
+  Astra's citation: official NHTS 2020 CAPI questionnaire, PDF page 33
+  (`https://isibaloweb.statssa.gov.za/metadata/NHTS/2020/National%20Household%20Travel%20Survey%202020%20questionnaire.pdf#page=33`).
+  This pass attempted to re-fetch that PDF directly and was blocked by the host's bot-protection
+  (Incapsula challenge page, no PDF content returned) -- the weekly reference period is corrected
+  here on Astra's specific page citation, not independently re-verified against the primary
+  document this pass. Do not treat this correction as independently confirmed until someone with
+  working access re-checks page 33 directly.
+  **What this does and does not change:** the trip-mean-vs-person-mean estimand mismatch between
+  `src/moments.py::transport_budget_share()` and the NHTS reconstruction (DECISIONS_PENDING.md
+  Question 4) is unaffected -- that mismatch follows from the cost/mode/payment-period questions
+  being asked about a specific journey, not from the screening question's reference period. What
+  IS affected: the survey does not, by itself, identify "the" cost of a week's worth of job-search
+  travel, only the cost of whichever journey(s) the routing block asks about within a
+  week-conditioned respondent pool. See `transport_measurement_specification.md`'s "Observation
+  and averaging specification" section for what is and is not identified from this design.
 
 No frequency assumption, excursion definition, or driver-code-5/6 scenario choice has been made in
 this file. **A PROPOSAL, not a decision, is recorded 2026-09-14 in

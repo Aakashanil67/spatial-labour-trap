@@ -1,5 +1,5 @@
 {
-  "_note": "Built from a desk audit of notebooks/moments/01-04 (this repo). No raw microdata file hash could be computed in this environment -- THESIS_DATA_ROOT is unset here and the underlying .dta files are restricted, DataFirst-licensed data that is never committed to this repository (see data/README.md). 'version' below is the DataFirst release folder/file name already embedded in each notebook's own path constants, which is the only version identifier available without live data access. Whoever next runs these notebooks with THESIS_DATA_ROOT set should compute and record a real sha256 for each file used, replacing the null hash fields below.",
+  "_note": "REBUILT 2026-09-14 (Astra review, finding 7). The previous version of this file said raw microdata could not be accessed and every hash was null; that was stale even at the time this project's own P2.1 audit (EXECUTION_STATUS.md) found THESIS_DATA_ROOT-equivalent live files at Data/extracted in the thesis repo. Every file below has now actually been hashed against the live files at that path, not asserted or left null. Hashes are sha256 of the raw .dta file, computed directly with hashlib in this session (see DECISIONS_PENDING.md/EXECUTION_STATUS.md for the run record). The QLFS 2026-Q1 and 2025-Q4 hashes reproduce Astra's independently-computed hashes exactly (verification.json).",
   "sources": [
     {
       "producer": "Statistics South Africa",
@@ -7,30 +7,47 @@
       "dataset": "Quarterly Labour Force Survey (QLFS)",
       "licence_tier": "Public use (CC-BY), per paper/notes/prompt-0.2-licence-check.md",
       "files": [
-        {"quarter": "2025-Q2", "version": "qlfs-2025-q2-v1", "filename": "qlfs-2025-q2-v1.dta", "sha256": null},
-        {"quarter": "2025-Q3", "version": "qlfs-2025-03", "filename": "QLFS202503.dta", "sha256": null},
-        {"quarter": "2025-Q4", "version": "qlfs-2025-q4-v1", "filename": "qlfs-2025-q4-v1.dta", "sha256": null},
-        {"quarter": "2026-Q1", "version": "qlfs-2026-q1-v1", "filename": "qlfs-2026-q1-v1.dta", "sha256": null}
+        {"quarter": "2025-Q2", "version": "qlfs-2025-q2-v1", "filename": "qlfs-2025-q2-v1.dta", "sha256": "6128644883c87d34d1b7f194a7f6ce204fc15e59f165a655612aa0a1a585378b"},
+        {"quarter": "2025-Q3", "version": "qlfs-2025-03", "filename": "QLFS202503.dta", "sha256": "2808cf97b2720c07dbdda92c70748a46d526d2f4030695b34ab8185cf6395c21"},
+        {"quarter": "2025-Q4", "version": "qlfs-2025-q4-v1", "filename": "qlfs-2025-q4-v1.dta", "sha256": "259a40bfc8191dd35f621cbc03b255825902b6c7e5d98441b1c58dc88f47ed07"},
+        {"quarter": "2026-Q1", "version": "qlfs-2026-q1-v1", "filename": "qlfs-2026-q1-v1.dta", "sha256": "4b9a93fec97dd9694c1c9b3fe51626322a24d7991ede50d237514e2dab5c2343"}
       ],
       "used_by_notebooks": ["01_discouraged_share.ipynb", "03_long_term_share_and_separation_rate.ipynb"],
+      "used_by_scripts": ["scripts/build_qlfs_candidate_moments.py", "scripts/build_qlfs_linkage_review.py"],
       "used_by_moments": ["discouraged_share", "long_term_share"],
-      "design_variable_audit": "Notebook 03 searched every quarter's Stata variable names AND labels for rotation-group, PSU, cluster, or wave indicators; none found beyond Stratum. Confirmed for these same 4 files, not assumed to extend to any other QLFS release.",
+      "design_variable_audit": "Notebook 03 searched every quarter's Stata variable names AND labels for rotation-group, PSU, cluster, or wave indicators; none found beyond Stratum. Confirmed for these same 4 files, not assumed to extend to any other QLFS release. CONFIRMED STILL TRUE 2026-09-14: no PSU field was found in this pass's independent use of the 2026-Q1/2025-Q4 files either. This means the QLFS-side household/dwelling-cluster bootstrap (qlfs_design_effect_comparison.csv) remains an approximation to the true PSU-level design -- see target_dictionary.csv's open_audit_findings and DECISIONS_PENDING.md Question 6 for the corrected (non-overclaiming) statement of what this approximation does and does not establish.",
       "geography_documented": false,
       "missingness_documented": false
     },
     {
       "producer": "Statistics South Africa",
       "distributor": "DataFirst",
-      "dataset": "National Household Travel Survey (NHTS) 2020",
+      "dataset": "National Household Travel Survey (NHTS) 2020, person file",
       "licence_tier": "Public use (CC-BY), per paper/notes/prompt-0.2-licence-check.md",
       "files": [
-        {"version": "nhts-2020-v1", "filename": "nhts-2020-person.dta", "sha256": null}
+        {"version": "nhts-2020-v1", "filename": "nhts-2020-person.dta", "sha256": "1fcf5841b22c44ddbf6aa1fb454d9ea36bf66d40c56c88d504d52cc75dd439bd"}
       ],
       "used_by_notebooks": ["02_transport_budget_share.ipynb"],
+      "used_by_scripts": ["scripts/build_transport_review_tables.py", "scripts/build_transport_candidate_estimates.py", "scripts/build_transport_wage_ratio_uncertainty.py"],
       "used_by_moments": ["transport_budget_share"],
-      "design_variable_audit": "Not run for this dataset -- notebook 02 does not check for a PSU/cluster/rotation field the way notebook 03 does for QLFS.",
-      "geography_documented": false,
-      "missingness_documented": "partial -- per-mode cost sentinels (Unspecified vs Not applicable) are handled but conflated (both treated as zero cost); see target_dictionary.csv's open_audit_findings for transport_budget_share."
+      "design_variable_audit": "Not run for this dataset -- notebook 02 does not check for a PSU/cluster/rotation field the way notebook 03 does for QLFS. The person file alone has no PSU field; a PSU/segment/stratum join IS available via the separate geography file below (Psuno_seg, Stratum), used by the design-based transport-to-wage-ratio bootstrap, but not by the canonical transport_budget_share() moment itself.",
+      "geography_documented": "ADDED 2026-09-14: see the nhts-2020-geog entry below -- previously omitted from this manifest entirely despite being used since the design-based uncertainty round.",
+      "missingness_documented": "partial -- per-mode cost sentinels (Unspecified vs Not applicable) are handled per-field and per-leg as of the 2026-09-14 journey-level rebuild (scripts/build_transport_review_tables.py); see target_dictionary.csv's open_audit_findings for transport_budget_share for the current state, which distinguishes zero/positive/ambiguous/nonresponse rather than conflating zero-cost and nonresponse as an earlier pass did."
+    },
+    {
+      "producer": "Statistics South Africa",
+      "distributor": "DataFirst",
+      "dataset": "National Household Travel Survey (NHTS) 2020, geography file",
+      "licence_tier": "Public use (CC-BY), per paper/notes/prompt-0.2-licence-check.md",
+      "files": [
+        {"version": "nhts-2020-v1", "filename": "nhts-2020-geog.dta", "sha256": "83b5b8f715140c573ffe23cc16a4202c1b5967359cfbc229202a54c4509b604b"}
+      ],
+      "used_by_notebooks": [],
+      "used_by_scripts": ["scripts/build_transport_wage_ratio_uncertainty.py"],
+      "used_by_moments": ["transport_budget_share (design-based uncertainty only, not the canonical point estimate)"],
+      "design_variable_audit": "Provides Uqno, Psuno_seg, Stratum -- joined to the person file on Uqno (verified: unique household join, 0 unmatched, 6,039 PSU/segments, 90 strata). This is the field used to build the stratified with-replacement PSU survey bootstrap for the transport-to-wage ratio's sampling uncertainty (transport_measurement_specification.md). Newly added to this manifest 2026-09-14 -- it existed and was in use before this correction, just never recorded here.",
+      "geography_documented": true,
+      "missingness_documented": "not applicable -- geography identifiers only, no missingness-prone substantive fields"
     },
     {
       "producer": "Baez, J. and Kshirsagar, V.",
@@ -45,7 +62,23 @@
       "design_variable_audit": "not applicable",
       "geography_documented": true,
       "missingness_documented": "not applicable",
-      "denominator_check": "CONFIRMED against the source text (Literature/baez_full.txt in the thesis repo, lines 799-801 and Table 5b's own title, p.38 printed): the dependent variable is 'the share of working-age adults employed' -- a working-age POPULATION denominator, not a labour-force one. This was previously an open question in target_dictionary.csv; verified directly against the paper on 2026-09-13, not left as an unconfirmed inference from the table title alone."
+      "denominator_check": "CONFIRMED against the source text (Literature/baez_full.txt in the thesis repo, lines 799-801 and Table 5b's own title, p.38 printed): the dependent variable is 'the share of working-age adults employed' -- a working-age POPULATION denominator, not a labour-force one. This was previously an open question in target_dictionary.csv; verified directly against the paper on 2026-09-13, not left as an unconfirmed inference from the table title alone. DECIDED 2026-09-13: this moment is removed from the fitted MSM target set (retained only as a qualitative benchmark) -- see target_dictionary.csv's open_audit_findings."
+    },
+    {
+      "producer": "Statistics South Africa / StatsSA CAPI application developer",
+      "distributor": "isibaloweb.statssa.gov.za (official metadata portal)",
+      "dataset": "National Household Travel Survey 2020 questionnaire (fielded CAPI instrument, PDF export)",
+      "licence_tier": "public metadata document, not microdata",
+      "files": [
+        {"version": "not applicable -- reference document, not downloaded/committed", "filename": "National Household Travel Survey 2020 questionnaire.pdf", "sha256": null}
+      ],
+      "used_by_notebooks": [],
+      "used_by_scripts": [],
+      "used_by_moments": ["transport_budget_share (routing/definition verification only)"],
+      "design_variable_audit": "not applicable",
+      "geography_documented": "not applicable",
+      "missingness_documented": "not applicable",
+      "access_note": "ADDED 2026-09-14. Cited by Astra for the Q47Travlooking reference-period finding (page 33: weekly, not daily) and the Q433bPay category-list discrepancy (page 38-39). This review pass attempted to fetch this PDF directly (both via a fetch tool and via curl) to independently re-verify those citations and was blocked both times by the host's Incapsula bot-protection challenge page -- no PDF content was retrieved. The corrections made this pass on these two points rely on Astra's specific page citations, not on independent re-confirmation against this primary document. Flagged explicitly so a future session with working access re-checks pages 33 and 38-39 directly rather than assuming this manifest entry means it was done."
     }
   ]
 }

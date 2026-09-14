@@ -33,6 +33,96 @@ already establish.
   prior round as the working default for this specification, not re-litigated here,
   but they remain proposals pending a decision, not settled facts.
 
+## Observation and averaging specification, added 2026-09-14 (Astra review, finding 2)
+
+**Correction first.** Earlier text in this project (`transport_definition.md`,
+`DECISIONS_PENDING.md` Question 4, `REVIEW_HANDOFF.md` section 6.5) described
+`Q47Travlooking` as a "reference day"/"single reported travel day" screening question
+and used that description to justify a person-window mean as automatically matching
+the survey's design. **`Q47Travlooking` (question 4.7) actually asks about job-search
+or business-starting travel over the previous Monday-to-Sunday WEEK**, per Astra's
+citation of the official NHTS 2020 CAPI questionnaire, PDF page 33. This pass
+attempted to re-fetch that PDF directly to verify independently and was blocked by the
+host's bot-protection (an Incapsula challenge page was returned instead of the PDF) --
+the correction below is made on Astra's specific page citation, not independently
+re-confirmed against the primary document this pass.
+
+**Stated explicitly, without overclaiming what the design identifies:**
+
+1. **Conditioning event**: `Q47Travlooking==Yes` -- the respondent made at least one
+   job-search or business-starting trip in the reference WEEK (not day).
+2. **Respondent contribution**: for a `Yes` respondent, the routed questions
+   (`Q416bWalk` through the `Q429b`-`Q432b` listed-mode block, or `Q433bPay`/
+   `Q434bCost` for drivers) describe ONE recorded journey -- for the listed-mode/
+   hitchhike group, up to four legs of one journey. There is no field asking "how many
+   such trips did you make this week" and no repeated per-trip cost grid. So each
+   in-scope respondent contributes exactly one journey-cost observation, regardless of
+   how many job-search trips they may have made in the reference week.
+3. **Treatment of multiple journeys within the week**: not observed. The survey
+   identifies neither the true weekly trip count nor whether the recorded journey is
+   representative of a typical trip that week. Any statement about "the" cost of a
+   week's job-search travel, or a conversion to a daily/monthly figure, requires an
+   explicit, separately stated frequency assumption -- already tracked as the open
+   "search days/week" sensitivity above, now understood as a genuine identification
+   gap rather than a detail to be reconciled against a (mistaken) single-day design.
+4. **Zero-cost travellers**: walkers, cyclists, and anyone whose recorded journey
+   resolves to "do not pay" contribute a genuine zero to the person-level cost
+   observation described in point 2 -- they are NOT the same as point 5.
+5. **People making no trip**: respondents with `Q47Travlooking==No` are excluded from
+   this population entirely; they contribute no observation (neither a zero nor a
+   missing value) to `transport_budget_share`'s numerator, matching the target
+   dictionary's existing conditioning statement.
+6. **Averaging across simulation time**: the model computes `transport_budget_share()`
+   over a multi-month simulation window, summing spend and trips across all months and
+   all agents before dividing (a TRIP-mean across the whole window; see below). The
+   survey instead provides one cross-sectional week per respondent, with no repeated
+   observation of the same person over time. The model's within-window trip-mean and
+   the survey's between-person mean of one-journey-per-person are therefore not
+   observationally identical constructs even before the trip-mean/person-mean
+   estimand question is resolved -- the survey has no time dimension to average over at
+   all, only a population dimension.
+
+**What IS identified from this design, stated positively**: a person-weighted mean (or
+median) of "the cost of the one job-search journey NHTS happened to record for this
+person," over the population that travelled while searching in the reference week.
+This is exactly the person-mean the candidate reconstruction computes. What is NOT
+identified: a trip-count-weighted (trip-mean) estimator, a true weekly total per
+person, or a estimate of how representative the recorded journey is of that person's
+other job-search trips (if any) in the same week.
+
+**Worked fixture (the plan's own averaging fixture, applied to this exact design).**
+Two survey respondents, each reporting one journey: person A pays R10, person B pays
+R30 (both `Q47Travlooking==Yes`, one journey recorded each, as design point 2
+requires -- NHTS provides no basis for saying person A made three trips and person B
+made one, since no trip-count field exists). The person-mean is (10+30)/2 = R20. A
+model agent who takes 3 trips at some cost and another who takes 1 trip at another
+cost would, under the model's current trip-mean definition, NOT reproduce R20 from
+underlying per-trip costs of R10/R30 unless trip counts happen to be equal -- this is
+the same fixture already in `DECISIONS_PENDING.md` Question 4, restated here to show
+it applies regardless of the (corrected) weekly vs. daily reference-period question.
+
+**The weekly-to-monthly model approximation, stated explicitly rather than assumed
+away.** The model's search-cost accounting is monthly (agents take some number of
+trips per model month). Connecting a week-conditioned survey screen to that requires
+an explicit assumption about how many of an agent's monthly trips correspond to what
+NHTS could have recorded in a comparable week -- this is NOT resolved by matching
+units (rand per trip on both sides) or by the person-mean/trip-mean choice alone. The
+existing frequency-sensitivity grid (`transport_candidate_frequency_sensitivity_15_64.csv`)
+already varies an assumed "search days/week" parameter and shows the point estimate
+moves by ~5.5% across a 1-7 days/week range; that IS the required weekly-to-monthly
+approximation, made explicit, not a separate untouched problem. What remains open is
+which single frequency value (if any) is adopted as primary, which is unchanged from
+the existing open item above.
+
+**Not changed by this correction**: no code in `src/moments.py` is modified here (the
+averaging-convention fix remains a G5-gated, undecided change per
+`DECISIONS_PENDING.md` Question 4/`REVIEW_HANDOFF.md` 6.5); note that
+`transport_budget_share()`'s own docstring in `src/moments.py` still asserts the
+model "match[es] how the NHTS-derived empirical target conditions on a reported
+travel day" -- that comment is also inaccurate per this correction and should be
+fixed alongside the eventual averaging-convention implementation change, not as a
+standalone edit to protected model source in this review-only pass.
+
 ## Point estimates: candidate transport-to-wage ratio
 
 Sample definitions, stated explicitly:
@@ -168,6 +258,19 @@ of variance on top of the cost-only reference, roughly consistent in direction a
 magnitude with genuine PSU-level clustering and median-related sampling variability,
 without the earlier method's spurious inflation or its unsupported population-effect
 story.
+
+**What these checks do NOT establish -- CORRECTED 2026-09-14 (Astra review, finding
+3).** The cost-only jackknife reference check and the replicate-median/interval-
+stability diagnostics above are internal-consistency and numerical-stability checks:
+they confirm the bootstrap machinery is calibrated against a trusted smooth-statistic
+reference and is not numerically unstable. They do NOT establish that the resulting
+percentile CI has correct coverage under the actual NHTS sampling design. This
+implementation is an explicit simple with-replacement PSU bootstrap, not the Rao-Wu
+rescaled procedure (see approximation 3 below); the "does the CI have correct
+coverage" question would need either a design-based simulation study or the survey's
+own official variance-estimation replicate weights, neither of which is available
+here. This is retained as a documented, useful review-stage estimate with stated
+limitations, not upgraded to a validated-coverage claim.
 
 ## Frequency sensitivity, CORRECTED description
 
