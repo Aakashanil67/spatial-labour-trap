@@ -1,4 +1,7 @@
-moment,point_estimate,kish_se,household_cluster_bootstrap_se,ratio_cluster_to_kish
-discouraged_share,0.134282,0.002317,0.003127,1.349
-employment_share,0.584642,0.003349,0.003861,1.153
-long_term_share,0.774421,0.005357,0.005986,1.118
+population,moment,point_estimate,kish_se,household_cluster_bootstrap_se,ratio_cluster_to_kish
+all_ages,discouraged_share,0.134282,0.002317,0.003127,1.349
+all_ages,employment_share,0.584642,0.003349,0.003861,1.153
+all_ages,long_term_share,0.774421,0.005357,0.005986,1.118
+15_64,discouraged_share,0.135234,0.002334,0.003111,1.333
+15_64,employment_share,0.58208,0.003367,0.003811,1.132
+15_64,long_term_share,0.774405,0.005362,0.005947,1.109

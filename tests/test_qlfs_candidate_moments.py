@@ -12,6 +12,7 @@ import pytest
 from scripts.build_qlfs_candidate_moments import (
     build_matched_panel,
     kish_se,
+    restrict_working_age,
     stock_cluster_bootstrap,
     stock_point_estimates,
     transition_point_estimates,
@@ -30,6 +31,59 @@ class TestKishSe:
         w_unequal = np.concatenate([np.full(10, 5.0), np.full(90, 1.0)])
         p = 0.3
         assert kish_se(p, w_unequal) > kish_se(p, w_equal)
+
+
+class TestRestrictWorkingAge:
+    def test_excludes_ages_outside_15_64(self):
+        df = pd.DataFrame({"Q14AGE": [10, 15, 40, 64, 65, 90]})
+        kept = restrict_working_age(df, "Q14AGE")
+        assert sorted(kept["Q14AGE"]) == [15, 40, 64]
+
+    def test_boundary_ages_inclusive(self):
+        df = pd.DataFrame({"Q14AGE": [14, 15, 64, 65]})
+        kept = restrict_working_age(df, "Q14AGE")
+        assert set(kept["Q14AGE"]) == {15, 64}
+
+    def test_missing_age_filter_would_change_discouraged_share(self):
+        """Regression fixture for Astra's review finding 1 (2026-09-14): STOCK_COLS
+        previously omitted Q14AGE, so the stock calculation could not impose the 15-64
+        filter it claimed to apply. This synthetic frame makes every 65+ respondent
+        Discouraged and every 15-64 respondent Employed, so an unapplied age filter and
+        a correctly applied one give maximally different, easily distinguished answers
+        (0.5 vs 0.0) rather than a subtle numeric drift that could pass unnoticed."""
+        rows = []
+        for i in range(19):
+            rows.append(
+                dict(
+                    Status=1,
+                    Long_term_unempl=np.nan,
+                    Weight=1.0,
+                    UQNO=f"a{i}",
+                    Stratum=0,
+                    Q14AGE=30,
+                )
+            )
+        # one unemployed 15-64 record so the working-age unemployed mask is non-empty
+        rows.append(
+            dict(Status=2, Long_term_unempl=1, Weight=1.0, UQNO="a19", Stratum=0, Q14AGE=30)
+        )
+        for i in range(20):
+            rows.append(
+                dict(
+                    Status=3,
+                    Long_term_unempl=np.nan,
+                    Weight=1.0,
+                    UQNO=f"b{i}",
+                    Stratum=0,
+                    Q14AGE=70,
+                )
+            )
+        df = pd.DataFrame(rows)
+        unrestricted = stock_point_estimates(df)
+        restricted = stock_point_estimates(restrict_working_age(df, "Q14AGE"))
+        assert unrestricted["discouraged_share"] == pytest.approx(0.5)
+        assert restricted["discouraged_share"] == pytest.approx(0.0)
+        assert restricted["n_expanded_lf"] == 20
 
 
 def _synthetic_stock_df(n_strata=3, hh_per_stratum=8, people_per_hh=2):

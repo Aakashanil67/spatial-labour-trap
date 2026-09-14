@@ -46,20 +46,51 @@ substantially, so a real dependency likely exists between them, but capturing it
 require jointly resampling across both quarters' designs at once, which this script
 does not attempt.
 
-**Cross-survey covariance (NHTS transport vs. any QLFS moment here) is zero by
-construction**, not an approximation: NHTS (2020) and QLFS (2025-2026) are
-independent survey administrations with disjoint sampling frames drawn in different
-years for different purposes, with no shared households or design. This is recorded
-here for the decision package, not computed (there is nothing to compute).
+**Cross-survey covariance (NHTS transport vs. any QLFS moment here) is treated as zero
+as an explicit WORKING ASSUMPTION for this stylised exercise, not a proven fact.**
+NHTS (2020) and QLFS (2025-2026) are separate StatsSA survey administrations in
+different years; no shared-household identifier or shared design document has been
+checked to positively rule out overlap. The two sampling frames are not shown here to
+be disjoint, only assumed so, following Astra's 2026-09-14 correction of an earlier,
+overstated "zero by construction" claim. The block-diagonal covariance matrix this
+implies is a mechanical construction under that assumption, not independent evidence
+for it.
+
+**Withdrawn overclaim, 2026-09-14 (Astra review):** an earlier version of this
+docstring, and `qlfs_design_effect_comparison.csv`'s accompanying prose, stated that
+the household-cluster bootstrap SE being 12-35% larger than Kish "confirms" or
+"establishes" that Kish understates the TRUE design-based uncertainty by that margin.
+That does not follow: `UQNO` identifies a dwelling, and QLFS's design has a
+primary-sampling-unit stage above the dwelling that this bootstrap does not resample
+(no PSU field survives in any of the four extracts -- confirmed by a full
+column-name-and-label search). A household/dwelling-cluster bootstrap captures
+within-household dependence and improves on Kish's no-clustering assumption, but it
+does not automatically reproduce between-household, within-PSU dependence, so it is
+not shown to equal the true design-based SE. The 12-35% figures are reported below as
+a comparison between two specific, named approximations, not as a validated
+correction factor.
 
 Usage:
     python -m scripts.build_qlfs_candidate_moments
 
-Requires THESIS_DATA_ROOT set. Writes:
+Requires THESIS_DATA_ROOT set. Writes (all keyed by an explicit `population` column,
+"all_ages" or "15_64" -- see the 2026-09-14 age-alignment fix below):
     data/review_v2/qlfs_candidate_moments.csv
     data/review_v2/qlfs_stock_moment_covariance.csv
     data/review_v2/qlfs_transition_moment_covariance.csv
     data/review_v2/qlfs_design_effect_comparison.csv
+
+**Age-alignment fix, 2026-09-14 (Astra review, finding 1).** `STOCK_COLS` previously
+omitted `Q14AGE`, so the stock calculation could not impose the 15-64 filter it
+claimed to apply, and the transition bootstrap/covariance resampled only the
+unrestricted `matched` panel even though `qlfs_candidate_moments.csv` reported
+separate 15-64 point estimates. Both are fixed: `Q14AGE` is now loaded, stock point
+estimates and the stock bootstrap are computed separately for both populations, and
+the transition bootstrap/covariance is computed separately for both `matched` and
+`matched_15_64`. Every output CSV carries an explicit `population` column so the two
+are never silently conflated. A regression fixture with over-64 respondents
+(`tests/test_qlfs_candidate_moments.py::TestRestrictWorkingAge`) now fails if the age
+filter stops being applied.
 """
 
 from __future__ import annotations
@@ -74,10 +105,12 @@ import pyreadstat
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = REPO_ROOT / "data" / "review_v2"
 
-STOCK_COLS = ["Status", "Long_term_unempl", "Weight", "UQNO", "Stratum"]
+STOCK_COLS = ["Status", "Long_term_unempl", "Weight", "UQNO", "Stratum", "Q14AGE"]
 PANEL_COLS = ["Status", "Q13GENDER", "Q14AGE", "Weight", "UQNO", "PERSONNO", "Stratum"]
 N_BOOT = 2000
 SEED = 42
+WORKING_AGE_LO = 15
+WORKING_AGE_HI = 64
 
 
 def load_quarter(path: Path, cols: list[str], encoding: str | None = None) -> pd.DataFrame:
@@ -86,6 +119,17 @@ def load_quarter(path: Path, cols: list[str], encoding: str | None = None) -> pd
     )
     df["UQNO"] = df["UQNO"].astype(str).str.strip()
     return df
+
+
+def restrict_working_age(
+    df: pd.DataFrame, age_col: str, lo: int = WORKING_AGE_LO, hi: int = WORKING_AGE_HI
+) -> pd.DataFrame:
+    """Filters to ages [lo, hi] inclusive. The caller is responsible for passing the
+    correct age column -- for the matched panel this must be the ORIGIN quarter's age
+    (e.g. `Q14AGE_q4`), not the destination quarter's, per the plan's separately
+    documented origin-age/end-point rule."""
+    age = pd.to_numeric(df[age_col], errors="coerce")
+    return df[age.between(lo, hi)]
 
 
 def kish_se(p_hat: float, w: np.ndarray) -> float:
@@ -231,41 +275,66 @@ def transition_cluster_bootstrap(
     return pd.DataFrame(rows)
 
 
+def _cov_to_long(cov_df: pd.DataFrame, population: str) -> pd.DataFrame:
+    long = cov_df.reset_index().rename(columns={"index": "moment_i"})
+    long = long.melt(id_vars="moment_i", var_name="moment_j", value_name="covariance")
+    long.insert(0, "population", population)
+    return long
+
+
 def main() -> None:
     data_root = Path(os.environ["THESIS_DATA_ROOT"])
     q1_path = data_root / "qlfs-2026-q1-v1" / "qlfs-2026-q1-v1.dta"
     q4_path = data_root / "qlfs-2025-04" / "qlfs-2025-q4-v1.dta"
 
-    stock_df = load_quarter(q1_path, STOCK_COLS, encoding="latin1")
-    point = stock_point_estimates(stock_df)
-    print("=== Stock point estimates (2026-Q1) ===")
-    print(point)
+    stock_df_full = load_quarter(q1_path, STOCK_COLS, encoding="latin1")
+    stock_populations = {
+        "all_ages": stock_df_full,
+        "15_64": restrict_working_age(stock_df_full, "Q14AGE"),
+    }
+    print(
+        f"Stock age restriction: {len(stock_df_full) - len(stock_populations['15_64'])} of "
+        f"{len(stock_df_full)} raw records fall outside {WORKING_AGE_LO}-{WORKING_AGE_HI} "
+        f"(restriction applied before computing expanded-labour-force membership, so this "
+        f"count includes rows outside the expanded labour force too)"
+    )
 
-    boot = stock_cluster_bootstrap(stock_df)
-    cov = boot[["discouraged_share", "employment_share", "long_term_share"]].cov()
-    cov.to_csv(OUT_DIR / "qlfs_stock_moment_covariance.csv")
-    print(f"\nWrote {OUT_DIR / 'qlfs_stock_moment_covariance.csv'}")
-    print(cov)
-
+    stock_cov_frames = []
     design_rows = []
-    for key, kish_key in [
-        ("discouraged_share", "kish_se_discouraged"),
-        ("employment_share", "kish_se_employment"),
-        ("long_term_share", "kish_se_long_term"),
-    ]:
-        cluster_se = float(boot[key].std(ddof=1))
-        design_rows.append(
-            dict(
-                moment=key,
-                point_estimate=round(point[key], 6),
-                kish_se=round(point[kish_key], 6),
-                household_cluster_bootstrap_se=round(cluster_se, 6),
-                ratio_cluster_to_kish=round(cluster_se / point[kish_key], 3),
+    for population, stock_df in stock_populations.items():
+        point = stock_point_estimates(stock_df)
+        print(f"\n=== Stock point estimates (2026-Q1, population={population}) ===")
+        print(point)
+
+        boot = stock_cluster_bootstrap(stock_df)
+        cov = boot[["discouraged_share", "employment_share", "long_term_share"]].cov()
+        stock_cov_frames.append(_cov_to_long(cov, population))
+
+        for key, kish_key in [
+            ("discouraged_share", "kish_se_discouraged"),
+            ("employment_share", "kish_se_employment"),
+            ("long_term_share", "kish_se_long_term"),
+        ]:
+            cluster_se = float(boot[key].std(ddof=1))
+            design_rows.append(
+                dict(
+                    population=population,
+                    moment=key,
+                    point_estimate=round(point[key], 6),
+                    kish_se=round(point[kish_key], 6),
+                    household_cluster_bootstrap_se=round(cluster_se, 6),
+                    ratio_cluster_to_kish=round(cluster_se / point[kish_key], 3),
+                )
             )
-        )
+
+    pd.concat(stock_cov_frames, ignore_index=True).to_csv(
+        OUT_DIR / "qlfs_stock_moment_covariance.csv", index=False
+    )
+    print(f"\nWrote {OUT_DIR / 'qlfs_stock_moment_covariance.csv'} (population-keyed)")
+
     design_df = pd.DataFrame(design_rows)
     design_df.to_csv(OUT_DIR / "qlfs_design_effect_comparison.csv", index=False)
-    print(f"\nWrote {OUT_DIR / 'qlfs_design_effect_comparison.csv'}")
+    print(f"\nWrote {OUT_DIR / 'qlfs_design_effect_comparison.csv'} (population-keyed)")
     print(design_df.to_string(index=False))
 
     q4_panel = load_quarter(q4_path, PANEL_COLS)
@@ -274,19 +343,20 @@ def main() -> None:
     n_consistent = int(matched["consistent"].sum())
     print(f"\nMatched panel (2025-Q4 -> 2026-Q1): n={len(matched)}, consistent={n_consistent}")
 
-    age_ok = (pd.to_numeric(matched["Q14AGE_q4"], errors="coerce") >= 15) & (
-        pd.to_numeric(matched["Q14AGE_q4"], errors="coerce") <= 64
-    )
-    matched_15_64 = matched[age_ok]
-    n_age_excluded = int((~age_ok).sum())
+    matched_15_64 = restrict_working_age(matched, "Q14AGE_q4")
+    n_age_excluded = len(matched) - len(matched_15_64)
     print(
         f"Origin-age (15-64) restriction: {n_age_excluded} of {len(matched)} matched "
-        f"records excluded (age filter applied to stocks and now consistently to panel "
-        f"origins, per the plan's P2.1 checklist)"
+        f"records excluded. Applied to the panel ORIGIN quarter (Q14AGE_q4) for transitions "
+        f"and to the 2026-Q1 stock file (Q14AGE) for stocks -- these are two separate "
+        f"restrictions on two separate samples, both now labelled 'population' in every "
+        f"output CSV, not a single shared filter."
     )
 
+    transition_populations = {"15_plus_origin_age": matched, "15_64_origin_age": matched_15_64}
+
     candidate_rows = []
-    for frame, age_label in [(matched, "15_plus_origin_age"), (matched_15_64, "15_64_origin_age")]:
+    for age_label, frame in transition_populations.items():
         for consistent_only, link_label in [
             (True, "consistent_PRIMARY"),
             (False, "raw_sensitivity"),
@@ -300,13 +370,23 @@ def main() -> None:
     print(f"\nWrote {OUT_DIR / 'qlfs_candidate_moments.csv'}")
     print(candidate_df.to_string(index=False))
 
-    tboot = transition_cluster_bootstrap(matched, consistent_only=True)
-    tcov = tboot[["u_to_e_quarterly", "e_to_non_e_quarterly"]].cov()
-    tcov.to_csv(OUT_DIR / "qlfs_transition_moment_covariance.csv")
-    print(f"\nWrote {OUT_DIR / 'qlfs_transition_moment_covariance.csv'}")
-    print(tcov)
-    print(f"\nu_to_e cluster bootstrap SE: {tboot['u_to_e_quarterly'].std(ddof=1):.5f}")
-    print(f"e_to_non_e cluster bootstrap SE: {tboot['e_to_non_e_quarterly'].std(ddof=1):.5f}")
+    transition_cov_frames = []
+    for age_label, frame in transition_populations.items():
+        tboot = transition_cluster_bootstrap(frame, consistent_only=True)
+        tcov = tboot[["u_to_e_quarterly", "e_to_non_e_quarterly"]].cov()
+        transition_cov_frames.append(_cov_to_long(tcov, age_label))
+        print(
+            f"\n[{age_label}] u_to_e cluster bootstrap SE: "
+            f"{tboot['u_to_e_quarterly'].std(ddof=1):.5f}, e_to_non_e cluster bootstrap SE: "
+            f"{tboot['e_to_non_e_quarterly'].std(ddof=1):.5f}"
+        )
+    pd.concat(transition_cov_frames, ignore_index=True).to_csv(
+        OUT_DIR / "qlfs_transition_moment_covariance.csv", index=False
+    )
+    print(
+        f"\nWrote {OUT_DIR / 'qlfs_transition_moment_covariance.csv'} "
+        f"(population-keyed: {list(transition_populations)})"
+    )
 
 
 if __name__ == "__main__":

@@ -1,3 +1,9 @@
-,u_to_e_quarterly,e_to_non_e_quarterly
-u_to_e_quarterly,1.9951204775662904e-05,-8.120140251073849e-08
-e_to_non_e_quarterly,-8.120140251073849e-08,9.288887141699662e-06
+population,moment_i,moment_j,covariance
+15_plus_origin_age,u_to_e_quarterly,u_to_e_quarterly,1.9951204775662904e-05
+15_plus_origin_age,e_to_non_e_quarterly,u_to_e_quarterly,-8.120140251073849e-08
+15_plus_origin_age,u_to_e_quarterly,e_to_non_e_quarterly,-8.120140251073849e-08
+15_plus_origin_age,e_to_non_e_quarterly,e_to_non_e_quarterly,9.288887141699662e-06
+15_64_origin_age,u_to_e_quarterly,u_to_e_quarterly,1.999520581762081e-05
+15_64_origin_age,e_to_non_e_quarterly,u_to_e_quarterly,-1.1019545145550327e-07
+15_64_origin_age,u_to_e_quarterly,e_to_non_e_quarterly,-1.1019545145550327e-07
+15_64_origin_age,e_to_non_e_quarterly,e_to_non_e_quarterly,9.35071571721881e-06
