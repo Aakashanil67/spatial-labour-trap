@@ -1,0 +1,15 @@
+age_universe,description,component,n,share_of_origin_eligible
+15_plus,age 15+ (no upper bound; the universe Status is actually derived for) -- PRIMARY,origin_eligible_total,46032,1.0
+15_plus,age 15+ (no upper bound; the universe Status is actually derived for) -- PRIMARY,matched_valid_destination,30977,0.6729
+15_plus,age 15+ (no upper bound; the universe Status is actually derived for) -- PRIMARY,destination_age_exclusion,0,0.0
+15_plus,age 15+ (no upper bound; the universe Status is actually derived for) -- PRIMARY,destination_status_invalid_other,27,0.0006
+15_plus,age 15+ (no upper bound; the universe Status is actually derived for) -- PRIMARY,failed_linkage_total,15028,0.3265
+15_plus,age 15+ (no upper bound; the universe Status is actually derived for) -- PRIMARY,failed_linkage_whole_dwelling_not_seen_in_q1,13211,0.287
+15_plus,age 15+ (no upper bound; the universe Status is actually derived for) -- PRIMARY,failed_linkage_dwelling_continues_person_not_matched,1817,0.0395
+15_to_64,age 15-64 (discouraged_share/long_term_share convention) -- alternative,origin_eligible_total,40854,1.0
+15_to_64,age 15-64 (discouraged_share/long_term_share convention) -- alternative,matched_valid_destination,27223,0.6663
+15_to_64,age 15-64 (discouraged_share/long_term_share convention) -- alternative,destination_age_exclusion,115,0.0028
+15_to_64,age 15-64 (discouraged_share/long_term_share convention) -- alternative,destination_status_invalid_other,25,0.0006
+15_to_64,age 15-64 (discouraged_share/long_term_share convention) -- alternative,failed_linkage_total,13491,0.3302
+15_to_64,age 15-64 (discouraged_share/long_term_share convention) -- alternative,failed_linkage_whole_dwelling_not_seen_in_q1,11745,0.2875
+15_to_64,age 15-64 (discouraged_share/long_term_share convention) -- alternative,failed_linkage_dwelling_continues_person_not_matched,1746,0.0427

@@ -313,15 +313,28 @@ assumption at all.
   inter-city-travel story was invented to explain an artifact, not a real feature of the data, and
   should not be repeated. Codes 1-4 only; the disputed codes 5/6 (Scenario A/B above) remain
   excluded from this table entirely rather than assigned to either scenario by default.
+  **Labelled separately, 2026-09-14**: `transport_provisional_reconstruction.csv` now reports
+  positive-only means (`drive_unambiguous_codes_1_4_positive_only`, the figures above -- "what a
+  paying driver typically pays") and zero-inclusive means
+  (`drive_unambiguous_codes_1_4_incl_numeric_zero`, e.g. R96.60/n=77 single-trip, R260.31/n=42
+  return-trip -- "what the average driver reporting this period pays, including those who paid
+  nothing") as distinct, separately labelled rows, rather than only the positive-only figure with
+  the zero-inclusive question unanswerable from the file.
 - **Restricted population, stated explicitly**: all figures above are conditional on
   `Q47Travlooking==Yes` (travelled while job-searching on the reference day) and a usable payment
   record for at least one leg; this is the same conditioning already documented for
   `transport_budget_share`'s numerator in `target_dictionary.csv` and is not a new restriction.
 
-No frequency assumption, excursion definition, or driver-code-5/6 scenario choice has been made.
-The next step remains exactly what "What is not yet done" above already lists: those four
-decisions, in order, before any single `transport_budget_share` reconstruction can be compared
-against the current 0.1058.
+No frequency assumption, excursion definition, or driver-code-5/6 scenario choice has been made in
+this file. **A PROPOSAL, not a decision, is recorded 2026-09-14 in
+`transport_candidate_estimates.md`: round-trip as the primary excursion unit** (consistent with
+the model's own existing return-fare interpretation of its flat transport-cost anchor -- see
+`src/calibrate.py`), with one-direction retained as an explicit comparison, alongside a
+person-weighted candidate grid, a bounded frequency-sensitivity check, and a candidate
+transport-to-wage ratio (~0.197-0.199, roughly double the current 0.1058) with bootstrap
+uncertainty and driver-scenario sensitivity. That file's own "What remains genuinely open" section
+states plainly that this is a proposal for review, and no `transport_budget_share` value is
+adopted from it.
 
 ## Reproducibility, 2026-09-14
 
@@ -332,4 +345,6 @@ each field's sentinel codes explicitly and per-leg (leg 1 and legs 2-4 of the li
 not share a sentinel convention, and the driver fields use a third convention again -- see the
 script's own docstring), and distinguishes fully-costed from partially-observed journeys and
 numeric zero from positive cost, rather than leaving those distinctions implicit in prose. Running
-it reproduces every number in this document.
+it reproduces every number in this document. `scripts/build_transport_candidate_estimates.py`
+(`python -m scripts.build_transport_candidate_estimates`) builds the decision-ready candidate grid
+and wage-ratio figures described in `transport_candidate_estimates.md`.

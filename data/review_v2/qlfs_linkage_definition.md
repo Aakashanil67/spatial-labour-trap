@@ -14,8 +14,8 @@ model side should target.
 Reproducible from `scripts/build_qlfs_linkage_review.py`
 (`python -m scripts.build_qlfs_linkage_review`, requires `THESIS_DATA_ROOT`), which writes
 `qlfs_linkage_flags.csv`, `qlfs_provisional_transitions.csv`, `qlfs_transition_sensitivity.csv`,
-`qlfs_age_universe_comparison.csv`, and `qlfs_attrition_decomposition.csv`. Every count in this
-file is an **unweighted sample diagnostic** -- no QLFS design weight is applied anywhere here.
+and `qlfs_origin_eligibility_outcomes.csv`. Every count in this file is an **unweighted sample
+diagnostic** -- no QLFS design weight is applied anywhere here.
 
 ## Demographic linkage flags, reproduced exactly
 
@@ -54,37 +54,53 @@ group in particular can legitimately be self-reported inconsistently across wave
 roster error). The transition-rate comparison below is offered as further, quantitative evidence,
 not as a resolution.
 
-## Status coverage: explicit age-universe alternatives, CORRECTED 2026-09-14
+## Origin-eligibility population and outcome decomposition, CORRECTED 2026-09-14
 
-**The prior pass of this file mislabelled the age-15+ population as "working-age", which is
-wrong and is corrected here.** `Status` is derived for every respondent aged 15 and over with no
-upper bound -- 10.2% of the Status-eligible 2025-Q4 population is 65 or older -- so "age 15+" and
-"working-age" (which conventionally means 15-64, the convention this project already uses for
-`discouraged_share`/`long_term_share`) are different populations and must not be conflated. Both
-are reported explicitly rather than picking one silently:
+**The analysis population is now defined by ORIGIN (2025-Q4) age eligibility, and every person in
+it is assigned exactly one of four mutually exclusive outcomes -- rather than collapsing
+everything into one "unmatched" figure.** The prior pass of this file also mislabelled the age-15+
+population as "working-age", which is corrected here: `Status` is derived for every respondent
+aged 15 and over with no upper bound -- 10.2% of the Status-eligible 2025-Q4 population is 65 or
+older -- so "age 15+" and "working-age" (conventionally 15-64, the convention this project uses
+elsewhere for `discouraged_share`/`long_term_share`) are different populations. **Age 15+ is the
+PRIMARY universe** (it is what `Status` is actually derived for); 15-64 is reported as an explicit
+alternative, not silently substituted for it.
 
-| age universe | Q4 eligible n | Q1 eligible n | matched n | unmatched share (vs. Q4) |
-| --- | --- | --- | --- | --- |
-| 15+ (no upper bound -- what `Status` is actually derived for) | 46,032 | 45,873 | 30,977 | 32.7% |
-| 15-64 (`discouraged_share`/`long_term_share` convention) | 40,854 | 40,666 | 27,223 | 33.4% |
+For each origin-eligible person, the outcome is one of:
 
-The choice moves the unmatched share by 0.7 percentage points -- small, but the two are genuinely
-different populations (the 15+ figure counts pensioners' "Other not economically active" status;
-the 15-64 figure does not) and reporting only one without saying which would have been a silent
-population choice. Everything below (flags, transitions) uses the 15+ population, matching
-`Status`'s own derivation; the 15-64 alternative is available in `qlfs_age_universe_comparison.csv`
-for whichever population a future target actually needs.
+1. **matched, valid destination status** -- linked via UQNO+PERSONNO into 2026-Q1, with a valid
+   Status there, within the same age universe.
+2. **destination-age exclusion** -- linked into 2026-Q1 with a valid Status there, but their Q1
+   age falls outside the chosen universe (only possible under the 15-64 alternative: a respondent
+   turned 65 between waves). **This is not attrition or a failed link** -- the same real person was
+   found and classified, just outside the age window -- and conflating it with genuine attrition,
+   as the previous "unmatched share" figure implicitly did for the 15-64 case, overstates the
+   linkage's real failure rate.
+3. **destination status invalid, other reason** -- linked into 2026-Q1, but Status is missing
+   there for a reason other than the age-universe restriction (rare: 27 of 46,032 under 15+, 25 of
+   40,854 under 15-64 -- not further investigated, small enough to not change any conclusion here).
+4. **failed linkage** -- UQNO+PERSONNO not found in 2026-Q1 at all.
 
-Confirmed as an exact internal consistency check: 30,977 matched Status-eligible-both-waves (15+)
-records is exactly the population size behind the transition matrix below (the "All" margin of
-the raw matched-panel cross-tab). Missingness among the raw 42,695 matched records (11,718 with
-`Status` unmapped in at least one wave) is 100% attributable to age under 15 in the affected wave,
-confirmed live -- not a separate nonresponse problem.
+| age universe | origin-eligible n | matched, valid | destination-age exclusion | destination status invalid (other) | failed linkage |
+| --- | --- | --- | --- | --- | --- |
+| 15+ (PRIMARY) | 46,032 | 30,977 (67.3%) | 0 (0.0%) | 27 (0.06%) | 15,028 (32.7%) |
+| 15-64 (alternative) | 40,854 | 27,223 (66.6%) | 115 (0.3%) | 25 (0.06%) | 13,491 (33.0%) |
 
-## Decomposing the 32.7% unmatched share, CORRECTED 2026-09-14
+Under the 15+ primary universe, destination-age exclusion is structurally impossible (no upper age
+bound), so the entire gap between "origin-eligible" and "matched, valid" is genuine linkage
+failure plus a negligible "other" residual -- the old 32.7% figure was already correct for 15+, it
+simply wasn't broken out by reason. Under 15-64, 115 people (0.3% of the origin-eligible
+population) are excluded purely because they aged past 64 between waves -- a real, previously
+unseparated effect, now visible in `qlfs_origin_eligibility_outcomes.csv` rather than folded into
+"unmatched".
+
+Full detail (both universes, all seven rows including the dwelling-level split below) in
+`qlfs_origin_eligibility_outcomes.csv`.
+
+## Decomposing failed linkage: dwelling continuity vs. person-level non-match
 
 **Scheduled rotation is not mechanically subtracted here.** QLFS is publicly documented as a
-rotating panel, which would suggest some of the 32.7% unmatched share reflects respondents
+rotating panel, which would suggest some of the failed-linkage share reflects respondents
 scheduled to leave the sample rather than genuine attrition. But neither 2025-Q4 nor 2026-Q1
 carries a rotation-group, wave, visit, or panel-position variable -- confirmed by a full search of
 every column name AND label in both extracts, not just a keyword subset (only `Stratum` matched
@@ -93,25 +109,25 @@ any design-related keyword). Applying a generic rotation-scheme percentage (e.g.
 against this specific data would be exactly the kind of unsupported assumption this review is
 trying to avoid, so it is not done.
 
-What the data DOES support is a coarser, still genuinely informative split, using `UQNO` (the
-dwelling identifier) directly:
+What the data DOES support is a coarser, still genuinely informative split of the failed-linkage
+group, using `UQNO` (the dwelling identifier) directly:
 
-| component | n | share of Q4 Status-eligible (15+) | interpretation |
+| component (15+ primary universe) | n | share of origin-eligible | interpretation |
 | --- | --- | --- | --- |
-| Whole dwelling not seen in 2026-Q1 at all | 13,217 | 28.7% | The UQNO itself does not reappear. Consistent with scheduled rotation out of the panel, but not confirmed as such absent a rotation variable. |
-| Dwelling continues, but this person is not matched | 1,838 | 4.0% | The UQNO DOES reappear (the dwelling stayed in the panel), but this specific PERSONNO does not. Looks more like ordinary within-household attrition (moved out, temporarily absent, deceased, etc.) than a scheduled exit, since the dwelling itself was not scheduled to leave. |
-| Matched | 30,977 | 67.3% | UQNO+PERSONNO matched with valid Status in both waves. |
+| Whole dwelling not seen in 2026-Q1 at all | 13,211 | 28.7% | The UQNO itself does not reappear. Consistent with scheduled rotation out of the panel, but not confirmed as such absent a rotation variable. |
+| Dwelling continues, but this person is not matched | 1,817 | 3.9% | The UQNO DOES reappear (the dwelling stayed in the panel), but this specific PERSONNO does not. Looks more like ordinary within-household attrition (moved out, temporarily absent, deceased, etc.) than a scheduled exit, since the dwelling itself was not scheduled to leave. |
 
-These three sum exactly to the Q4 Status-eligible population (46,032). This is offered as a
-genuine, data-supported partial decomposition -- not a rotation-group variable, and the
-28.7%/4.0% split should not be read as "scheduled" vs. "attrition" with certainty, only as
-"whole-household non-continuity" vs. "within-household non-match", which is a meaningfully
-different (and more informative) split than the raw 32.7% alone.
+These two sum exactly to the 15,028 failed-linkage total above. This is offered as a genuine,
+data-supported partial decomposition -- not a rotation-group variable, and the 28.7%/3.9% split
+should not be read as "scheduled" vs. "attrition" with certainty, only as "whole-household
+non-continuity" vs. "within-household non-match", which is a meaningfully different (and more
+informative) split than the raw failed-linkage total alone. The 15-64 alternative universe shows
+the same pattern (28.8%/4.3% of its origin-eligible population) in `qlfs_origin_eligibility_outcomes.csv`.
 
-**32.7% (or 33.4% under the 15-64 alternative) is a substantial unmatched share and should be
-treated as a real limitation of any survey transition target built this way**, not a footnote.
-No design-based nonresponse weighting has been applied to correct for it (unweighted counts
-throughout, as stated above); whether QLFS's own panel weights address this is not checked here.
+**A 32.7% failed-linkage share (33.0% under the 15-64 alternative) is a substantial limitation of
+any survey transition target built this way**, not a footnote. No design-based nonresponse
+weighting has been applied to correct for it (unweighted counts throughout, as stated above);
+whether QLFS's own panel weights address this is not checked here.
 
 ## Provisional quarterly Status transitions
 
@@ -151,7 +167,10 @@ CORRECTED 2026-09-14 to cover every origin/destination cell, not just the diagon
 | Other NEA -> Discouraged | 0.0322 | 0.0314 | -0.08 | -2.5% |
 | Other NEA -> Other NEA | 0.8946 | 0.8984 | +0.38 | +0.4% |
 
-Full detail in `qlfs_transition_sensitivity.csv`. The diagonal (persistence) cells all move by
+Full detail in `qlfs_transition_sensitivity.csv` (its `absolute_difference_pp` column is now on
+the same 0-100 percentage-point scale as this table -- CORRECTED 2026-09-14, it previously stored
+a raw 0-1 proportion difference under a column name that claimed percentage points). The diagonal
+(persistence) cells all move by
 under 0.6 percentage points in absolute terms -- immaterial for the states that dominate the
 population. But the RELATIVE picture on small off-diagonal cells is not uniformly small: the two
 "-> Employed" cells from inactive-adjacent origins move by 9-11% in relative terms (Employed ->
@@ -183,10 +202,14 @@ recorded; neither is adopted.
 
 Settled: the demographic flags reproduce exactly; the flagged records are a small enough share
 that excluding them moves diagonal transition shares by under 0.6pp (though some small
-off-diagonal cells move by 9-11% in relative terms); the age-15+ population is correctly
-distinguished from the 15-64 "working-age" convention, with both reported; and the unmatched share
-is decomposed as far as the available fields allow (whole-dwelling non-continuity vs.
-within-dwelling person-level non-match) without assuming a mechanical rotation percentage.
+off-diagonal cells move by 9-11% in relative terms, with units now correctly on a 0-100 pp scale
+in `qlfs_transition_sensitivity.csv`); the analysis population is defined by origin-age
+eligibility (primary: 15+) rather than requiring destination-age eligibility too, so
+destination-age exclusion (only possible under the 15-64 alternative) is reported separately from
+genuine failed linkage instead of being folded into it; the age-15+ population is correctly
+distinguished from the 15-64 "working-age" convention, with both reported; and failed linkage is
+decomposed as far as the available fields allow (whole-dwelling non-continuity vs. within-dwelling
+person-level non-match) without assuming a mechanical rotation percentage.
 
 Not settled: whether the flagged records are genuine transitions or linkage errors; whether
 whole-dwelling non-continuity is actually scheduled rotation (no rotation variable exists to

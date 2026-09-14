@@ -1,41 +1,54 @@
 """Focused checks for the decision-ready candidate transport-estimate conversion logic
 (scripts/build_transport_candidate_estimates.py). Pure unit tests -- no live microdata.
+
+Covers the 2026-09-14 fix: frequency conversion (periods 3/4) must respect the
+excursion definition exactly like periods 1/2 do, so round_trip == 2 * one_direction
+for every period code, not just single/return trip.
 """
 
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 
 from scripts.build_transport_candidate_estimates import (
-    EXCURSION_BASES,
-    FREQ_PRIMARY,
-    driver_total,
-    journey_total,
+    driver_outcome,
+    journey_outcome,
     leg_contribution,
 )
 
-ONE_DIRECTION = EXCURSION_BASES["one_direction"]
-ROUND_TRIP = EXCURSION_BASES["round_trip"]
+FREQ = 5  # days/week, matches PRIMARY_FREQ_DAYS_PER_WEEK
 
 
-class TestLegContribution:
-    def test_single_trip_one_direction_basis_is_unchanged(self):
-        assert leg_contribution(1, 50, ONE_DIRECTION, FREQ_PRIMARY) == 50
+class TestLegContributionConsistency:
+    @pytest.mark.parametrize("pay,cost", [(1, 50), (2, 100), (3, 150), (4, 600)])
+    def test_round_trip_is_exactly_twice_one_direction(self, pay, cost):
+        one = leg_contribution(pay, cost, FREQ, "one_direction")
+        two = leg_contribution(pay, cost, FREQ, "round_trip")
+        assert two == pytest.approx(one * 2)
 
-    def test_single_trip_round_trip_basis_is_doubled(self):
-        assert leg_contribution(1, 50, ROUND_TRIP, FREQ_PRIMARY) == 100
+    def test_single_trip_one_direction_is_unchanged(self):
+        assert leg_contribution(1, 50, FREQ, "one_direction") == 50
 
-    def test_return_trip_one_direction_basis_is_halved(self):
-        assert leg_contribution(2, 100, ONE_DIRECTION, FREQ_PRIMARY) == 50
+    def test_return_trip_one_direction_is_halved(self):
+        assert leg_contribution(2, 100, FREQ, "one_direction") == 50
 
-    def test_return_trip_round_trip_basis_is_unchanged(self):
-        assert leg_contribution(2, 100, ROUND_TRIP, FREQ_PRIMARY) == 100
+    def test_weekly_conversion_depends_on_excursion_basis(self):
+        # this is the bug being fixed: previously week/month conversions ignored
+        # the excursion basis entirely, so one_direction == round_trip for period 3/4
+        one = leg_contribution(3, 150, FREQ, "one_direction")
+        two = leg_contribution(3, 150, FREQ, "round_trip")
+        assert one != two
+        assert two == one * 2
 
-    def test_weekly_divided_by_frequency_assumption(self):
-        assert leg_contribution(3, 150, ONE_DIRECTION, FREQ_PRIMARY) == 30  # 150 / 5
+    def test_monthly_conversion_uses_weeks_per_month_consistently(self):
+        # freq=5 days/week -> 5*4.345=21.725 days/month, matching the wage side's
+        # 21.7-day convention closely (not coincidentally: 21.7/4.345 ~= 5)
+        contribution = leg_contribution(4, 21.725 * 2 * 10, FREQ, "round_trip")
+        assert contribution == pytest.approx(10 * 2)
 
     def test_per_year_is_unconvertible(self):
-        assert leg_contribution(5, 270, ONE_DIRECTION, FREQ_PRIMARY) is None
+        assert leg_contribution(5, 270, FREQ, "round_trip") is None
 
 
 def leg1_row(mode=1, pay=1, cost=50):
@@ -55,50 +68,77 @@ def leg1_row(mode=1, pay=1, cost=50):
     }
 
 
-class TestJourneyTotal:
-    def test_single_resolved_leg(self):
+class TestJourneyOutcome:
+    def test_single_resolved_leg_directly_supported(self):
         row = pd.Series(leg1_row(pay=1, cost=50))
-        assert journey_total(row, ONE_DIRECTION, FREQ_PRIMARY) == 50
+        total, cls = journey_outcome(row, FREQ, "round_trip")
+        assert total == 100
+        assert cls == "directly_supported"
 
-    def test_zero_fare_leg_contributes_nothing(self):
+    def test_weekly_leg_requires_frequency(self):
+        row = pd.Series(leg1_row(pay=3, cost=150))
+        total, cls = journey_outcome(row, FREQ, "round_trip")
+        assert cls == "requires_frequency"
+        assert total is not None
+
+    def test_zero_fare_leg_directly_supported_zero_total(self):
         row = pd.Series(leg1_row(pay=7, cost=8888))
-        assert journey_total(row, ONE_DIRECTION, FREQ_PRIMARY) == 0
+        total, cls = journey_outcome(row, FREQ, "round_trip")
+        assert total == 0
+        assert cls == "directly_supported"
 
-    def test_ambiguous_leg_makes_journey_unresolved(self):
+    def test_ambiguous_leg_unresolved(self):
         row = pd.Series(leg1_row(pay=1, cost=9999))
-        assert journey_total(row, ONE_DIRECTION, FREQ_PRIMARY) is None
+        total, cls = journey_outcome(row, FREQ, "round_trip")
+        assert total is None
+        assert cls == "unresolved"
 
-    def test_dnk_leg_makes_journey_unresolved(self):
+    def test_dnk_leg_unresolved(self):
         row = pd.Series(leg1_row(pay=8, cost=8888))
-        assert journey_total(row, ONE_DIRECTION, FREQ_PRIMARY) is None
+        total, cls = journey_outcome(row, FREQ, "round_trip")
+        assert cls == "unresolved"
 
-    def test_per_year_leg_makes_journey_unresolved(self):
+    def test_per_year_leg_unresolved(self):
         row = pd.Series(leg1_row(pay=5, cost=270))
-        assert journey_total(row, ONE_DIRECTION, FREQ_PRIMARY) is None
+        total, cls = journey_outcome(row, FREQ, "round_trip")
+        assert cls == "unresolved"
 
 
-class TestDriverTotal:
-    def test_positive_code_resolved(self):
+class TestDriverOutcome:
+    def test_positive_code_directly_supported(self):
         row = pd.Series({"Q433bPay": 1, "Q434bCost": 80})
-        assert driver_total(row, ONE_DIRECTION, FREQ_PRIMARY, scenario="A") == 80
+        total, cls = driver_outcome(row, FREQ, "round_trip", scenario="A")
+        assert total == 160
+        assert cls == "directly_supported"
 
-    def test_numeric_zero_resolved_as_zero(self):
+    def test_weekly_code_requires_frequency(self):
+        row = pd.Series({"Q433bPay": 3, "Q434bCost": 300})
+        _total, cls = driver_outcome(row, FREQ, "round_trip", scenario="A")
+        assert cls == "requires_frequency"
+
+    def test_numeric_zero_directly_supported_zero(self):
         row = pd.Series({"Q433bPay": 1, "Q434bCost": 0})
-        assert driver_total(row, ONE_DIRECTION, FREQ_PRIMARY, scenario="A") == 0
+        total, cls = driver_outcome(row, FREQ, "round_trip", scenario="A")
+        assert total == 0
+        assert cls == "directly_supported"
 
-    def test_code_5_scenario_a_is_nonresponse(self):
+    def test_code_5_scenario_a_unresolved(self):
         row = pd.Series({"Q433bPay": 5, "Q434bCost": 8888})
-        assert driver_total(row, ONE_DIRECTION, FREQ_PRIMARY, scenario="A") is None
+        total, cls = driver_outcome(row, FREQ, "round_trip", scenario="A")
+        assert total is None
+        assert cls == "unresolved"
 
-    def test_code_5_scenario_b_is_legitimate_zero(self):
+    def test_code_5_scenario_b_directly_supported_zero(self):
         row = pd.Series({"Q433bPay": 5, "Q434bCost": 8888})
-        assert driver_total(row, ONE_DIRECTION, FREQ_PRIMARY, scenario="B") == 0
+        total, cls = driver_outcome(row, FREQ, "round_trip", scenario="B")
+        assert total == 0
+        assert cls == "directly_supported"
 
-    def test_code_6_is_nonresponse_under_both_scenarios(self):
+    def test_code_6_unresolved_under_both_scenarios(self):
         row = pd.Series({"Q433bPay": 6, "Q434bCost": 8888})
-        assert driver_total(row, ONE_DIRECTION, FREQ_PRIMARY, scenario="A") is None
-        assert driver_total(row, ONE_DIRECTION, FREQ_PRIMARY, scenario="B") is None
+        assert driver_outcome(row, FREQ, "round_trip", "A")[1] == "unresolved"
+        assert driver_outcome(row, FREQ, "round_trip", "B")[1] == "unresolved"
 
-    def test_ambiguous_cost_is_unresolved(self):
+    def test_ambiguous_cost_unresolved(self):
         row = pd.Series({"Q433bPay": 1, "Q434bCost": 9999})
-        assert driver_total(row, ONE_DIRECTION, FREQ_PRIMARY, scenario="A") is None
+        assert driver_outcome(row, FREQ, "round_trip", "A")[1] == "unresolved"

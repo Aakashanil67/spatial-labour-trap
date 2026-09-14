@@ -1,5 +1,11 @@
-excursion_definition,driver_code_5_6_scenario,frequency_assumption,coverage_n,coverage_total,coverage_share,unweighted_mean_rand,weighted_mean_rand,weighted_median_rand
-one_direction,A,5_trips_per_week_21.7_days_per_month,4556,4655,0.9787,21.24,19.97,10.5
-one_direction,A,7_trips_per_week_30_days_per_month,4556,4655,0.9787,21.1,19.83,10.5
-round_trip,A,5_trips_per_week_21.7_days_per_month,4556,4655,0.9787,42.0,39.45,20.0
-round_trip,A,7_trips_per_week_30_days_per_month,4556,4655,0.9787,41.86,39.3,20.0
+excursion_definition,driver_code_5_6_scenario,freq_days_per_week,coverage_n_directly_supported,coverage_n_requires_frequency,coverage_n_unresolved,coverage_n_total,unweighted_coverage_share_direct,unweighted_coverage_share_total,weighted_coverage_share_direct,weighted_coverage_share_total,weighted_mean_rand,weighted_median_rand,unweighted_mean_rand_diagnostic
+round_trip,A,1,4505,51,99,4655,0.9678,0.9787,0.9677,0.9801,41.46,22.0,43.92
+round_trip,A,2,4505,51,99,4655,0.9678,0.9787,0.9677,0.9801,40.2,22.0,42.72
+round_trip,A,3,4505,51,99,4655,0.9678,0.9787,0.9677,0.9801,39.78,21.0,42.32
+round_trip,A,5,4505,51,99,4655,0.9678,0.9787,0.9677,0.9801,39.45,20.0,42.0
+round_trip,A,7,4505,51,99,4655,0.9678,0.9787,0.9677,0.9801,39.3,20.0,41.86
+one_direction,A,1,4505,51,99,4655,0.9678,0.9787,0.9677,0.9801,20.73,11.0,21.96
+one_direction,A,2,4505,51,99,4655,0.9678,0.9787,0.9677,0.9801,20.1,11.0,21.36
+one_direction,A,3,4505,51,99,4655,0.9678,0.9787,0.9677,0.9801,19.89,10.5,21.16
+one_direction,A,5,4505,51,99,4655,0.9678,0.9787,0.9677,0.9801,19.72,10.0,21.0
+one_direction,A,7,4505,51,99,4655,0.9678,0.9787,0.9677,0.9801,19.65,10.0,20.93

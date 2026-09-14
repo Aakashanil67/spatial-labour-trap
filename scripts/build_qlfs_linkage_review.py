@@ -6,23 +6,26 @@ EXECUTION_STATUS.md) into a full, reproducible script that:
   - reproduces Astra's three demographic-consistency flag counts among matched records
     (age-change, gender-code-change, population-group-change) instead of discarding or
     accepting them on faith
-  - reports the matched sample's Status coverage under TWO explicit age universes --
-    age 15+ (the universe `Status` is actually derived for, no upper bound) and the
-    15-64 convention used elsewhere in this project for discouraged_share/long_term_share
-    -- rather than mislabelling the unbounded 15+ population as "working-age" (a term
-    that implies the 15-64 convention)
-  - decomposes the unmatched share into whole-dwelling non-continuity (the UQNO itself is
-    not seen again, consistent with -- but not proof of -- scheduled rotation) and
-    person-level non-match within a continuing dwelling (a different, more clearly
-    attrition-like pattern), since no rotation/wave/visit design variable exists in
-    either extract to identify scheduled rotation directly (confirmed by a full column
-    name+label search, not just a keyword subset) -- a mechanical rotation-share
-    subtraction is deliberately NOT applied
+  - defines the analysis population by ORIGIN (2025-Q4) age eligibility -- the PRIMARY
+    universe is age 15+ (the universe `Status` is actually derived for, no upper
+    bound), with the 15-64 convention used elsewhere in this project
+    (discouraged_share/long_term_share) reported as an explicit alternative
+  - for each origin-eligible person, separates four distinct outcomes rather than
+    collapsing everything into one "unmatched" figure: matched with a valid,
+    in-universe destination status; matched but the destination status is out of the
+    age universe (ONLY possible under the 15-64 alternative -- someone turned 65
+    between waves); matched but the destination status is invalid for some other
+    reason; and failed linkage (UQNO+PERSONNO simply not found in 2026-Q1 at all).
+    Failed linkage is further split into whole-dwelling non-continuity (the UQNO
+    itself is not seen again, consistent with -- but not proof of -- scheduled
+    rotation) and within-dwelling person-level non-match, since no rotation/wave/
+    visit design variable exists in either extract (confirmed by a full column
+    name+label search) to identify scheduled rotation directly
   - computes provisional survey-side quarterly Status transitions (official StatsSA
-    categories) for the full matched panel, the panel with flagged records excluded, and
-    the flagged records alone, and reports the ABSOLUTE (percentage-point) and RELATIVE
-    (%) difference between the full and excl-flagged panels for every origin/destination
-    cell, not just the diagonal
+    categories) for the PRIMARY (15+) matched-valid population, the panel with
+    demographic-flagged records excluded, and the flagged records alone, and reports
+    the ABSOLUTE (percentage-point, on a 0-100 scale) and RELATIVE (%) difference
+    between the full and excl-flagged panels for every origin/destination cell
 
 This is an empirical review output only, and all counts are UNWEIGHTED sample
 diagnostics -- no QLFS design weight is applied anywhere in this script. It does NOT
@@ -43,8 +46,7 @@ Requires THESIS_DATA_ROOT set (see data/README.md). Writes:
     data/review_v2/qlfs_linkage_flags.csv
     data/review_v2/qlfs_provisional_transitions.csv
     data/review_v2/qlfs_transition_sensitivity.csv
-    data/review_v2/qlfs_age_universe_comparison.csv
-    data/review_v2/qlfs_attrition_decomposition.csv
+    data/review_v2/qlfs_origin_eligibility_outcomes.csv
 """
 
 from __future__ import annotations
@@ -66,12 +68,15 @@ LINK_COLS = ["UQNO", "PERSONNO", "Q13GENDER", "Q14AGE", "Q15POPULATION", "Status
 # not just a keyword subset (see qlfs_rotation_search in the review scratch history).
 # A scheduled-rotation share is therefore not directly identifiable and is never
 # subtracted mechanically anywhere in this script.
-_AGE_15_PLUS_LABEL = "age 15+ (no upper bound; the universe Status is actually derived for)"
-_AGE_15_64_LABEL = "age 15-64 (discouraged_share/long_term_share convention)"
+_AGE_15_PLUS_LABEL = (
+    "age 15+ (no upper bound; the universe Status is actually derived for) -- PRIMARY"
+)
+_AGE_15_64_LABEL = "age 15-64 (discouraged_share/long_term_share convention) -- alternative"
 AGE_UNIVERSES = {
     "15_plus": (_AGE_15_PLUS_LABEL, lambda a: a >= 15),
     "15_to_64": (_AGE_15_64_LABEL, lambda a: (a >= 15) & (a <= 64)),
 }
+PRIMARY_AGE_UNIVERSE = "15_plus"
 
 
 def load_quarter(path: Path, encoding: str | None = None) -> pd.DataFrame:
@@ -111,7 +116,7 @@ def transition_rows(frame: pd.DataFrame, population: str) -> list[dict]:
     return rows
 
 
-def build_linkage_flags(m: pd.DataFrame, q4: pd.DataFrame, q1: pd.DataFrame) -> pd.DataFrame:
+def build_linkage_flags(m: pd.DataFrame, q4: pd.DataFrame, q1: pd.DataFrame):
     age_diff = m["Q14AGE_q1"] - m["Q14AGE_q4"]
     age_flag = ~age_diff.isin([0, 1])
     gender_flag = m["Q13GENDER_q4"] != m["Q13GENDER_q1"]
@@ -131,81 +136,84 @@ def build_linkage_flags(m: pd.DataFrame, q4: pd.DataFrame, q1: pd.DataFrame) -> 
     return flags, any_flag
 
 
-def build_age_universe_comparison(q4: pd.DataFrame, q1: pd.DataFrame) -> pd.DataFrame:
-    rows = []
-    for key, (label, agefilter) in AGE_UNIVERSES.items():
-        q4e = q4[q4["Status"].isin([1, 2, 3, 4]) & agefilter(q4["Q14AGE"])]
-        q1e = q1[q1["Status"].isin([1, 2, 3, 4]) & agefilter(q1["Q14AGE"])]
-        me = q4e.merge(q1e, on=["UQNO", "PERSONNO"], suffixes=("_q4", "_q1"), how="inner")
-        rows.append(
-            dict(
-                age_universe=key,
-                description=label,
-                q4_eligible_n=len(q4e),
-                q1_eligible_n=len(q1e),
-                matched_n=len(me),
-                unmatched_share_vs_q4=round(1 - len(me) / len(q4e), 4),
-                unmatched_share_vs_q1=round(1 - len(me) / len(q1e), 4),
-            )
-        )
-    return pd.DataFrame(rows)
-
-
-def build_attrition_decomposition(q4_elig: pd.DataFrame, q1_elig: pd.DataFrame) -> pd.DataFrame:
-    """Splits the unmatched share by what is actually observable: whether the
-    RESPONDENT'S DWELLING (UQNO) reappears at all in the next wave, versus whether
-    this specific person is matched within a dwelling that does reappear. The first
-    is consistent with (but not confirmed as) scheduled rotation out of the panel;
-    the second is a within-household pattern -- the household kept being surveyed,
-    but this person specifically was not matched -- that looks more like ordinary
-    attrition (moved, temporarily absent, etc.) than a scheduled panel exit. This is
-    the finest split the available fields support; it is NOT a rotation-group
-    variable and is not treated as one.
+def build_origin_eligibility_outcomes(
+    q4: pd.DataFrame, q1: pd.DataFrame, universe_key: str
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Origin (2025-Q4) age-eligibility defines the analysis population; every person
+    in it gets exactly one outcome. Returns (outcome_summary, matched_valid_frame) --
+    the second is the frame to feed into transition_rows for this universe.
     """
-    q4_dwellings = set(q4_elig["UQNO"])
-    q1_dwellings = set(q1_elig["UQNO"])
-    continuing = q4_dwellings & q1_dwellings
+    label, agefilter = AGE_UNIVERSES[universe_key]
+    q4e = q4[q4["Status"].isin([1, 2, 3, 4]) & agefilter(q4["Q14AGE"])].reset_index(drop=True)
+    q1_uqnos = set(q1["UQNO"])
 
-    q4_in_cont = q4_elig[q4_elig["UQNO"].isin(continuing)]
-    q1_in_cont = q1_elig[q1_elig["UQNO"].isin(continuing)]
-    person_matched = q4_in_cont.merge(q1_in_cont, on=["UQNO", "PERSONNO"], how="inner")
+    m = q4e.merge(q1, on=["UQNO", "PERSONNO"], how="left", suffixes=("_q4", "_q1"), indicator=True)
+    linked = m["_merge"] == "both"
+    dest_status_valid = m["Status_q1"].isin([1, 2, 3, 4])
+    dest_age_ok = agefilter(m["Q14AGE_q1"]).fillna(False)
 
-    total = len(q4_elig)
-    dwelling_dropout_n = total - len(q4_in_cont)
-    person_dropout_n = len(q4_in_cont) - len(person_matched)
-    matched_n = len(person_matched)
+    matched_valid = linked & dest_status_valid & dest_age_ok
+    dest_age_excl = linked & dest_status_valid & ~dest_age_ok
+    dest_invalid_other = linked & ~dest_status_valid
+    failed_link = ~linked
 
-    return pd.DataFrame(
+    dwelling_gone = ~m.loc[failed_link, "UQNO"].isin(q1_uqnos)
+
+    total = len(q4e)
+    summary = pd.DataFrame(
         [
             dict(
-                component="whole_dwelling_not_seen_in_q1",
-                n=dwelling_dropout_n,
-                share_of_q4_eligible=round(dwelling_dropout_n / total, 4),
-                note=(
-                    "UQNO not observed at all in 2026-Q1. Consistent with scheduled rotation out "
-                    "of the panel, but not confirmed as such -- no rotation/wave variable exists "
-                    "in either extract to verify it."
-                ),
+                age_universe=universe_key,
+                description=label,
+                component="origin_eligible_total",
+                n=total,
+                share_of_origin_eligible=1.0,
             ),
             dict(
-                component="person_not_matched_within_continuing_dwelling",
-                n=person_dropout_n,
-                share_of_q4_eligible=round(person_dropout_n / total, 4),
-                note=(
-                    "UQNO IS observed again in 2026-Q1 (the dwelling continued in the panel), but "
-                    "this PERSONNO was not. Looks more like ordinary within-household attrition "
-                    "(moved out, temporarily absent, etc.) than a scheduled panel exit, since the "
-                    "dwelling itself was not scheduled to leave."
-                ),
+                age_universe=universe_key,
+                description=label,
+                component="matched_valid_destination",
+                n=int(matched_valid.sum()),
+                share_of_origin_eligible=round(matched_valid.sum() / total, 4),
             ),
             dict(
-                component="matched",
-                n=matched_n,
-                share_of_q4_eligible=round(matched_n / total, 4),
-                note="UQNO+PERSONNO matched with valid Status in both waves.",
+                age_universe=universe_key,
+                description=label,
+                component="destination_age_exclusion",
+                n=int(dest_age_excl.sum()),
+                share_of_origin_eligible=round(dest_age_excl.sum() / total, 4),
+            ),
+            dict(
+                age_universe=universe_key,
+                description=label,
+                component="destination_status_invalid_other",
+                n=int(dest_invalid_other.sum()),
+                share_of_origin_eligible=round(dest_invalid_other.sum() / total, 4),
+            ),
+            dict(
+                age_universe=universe_key,
+                description=label,
+                component="failed_linkage_total",
+                n=int(failed_link.sum()),
+                share_of_origin_eligible=round(failed_link.sum() / total, 4),
+            ),
+            dict(
+                age_universe=universe_key,
+                description=label,
+                component="failed_linkage_whole_dwelling_not_seen_in_q1",
+                n=int(dwelling_gone.sum()),
+                share_of_origin_eligible=round(dwelling_gone.sum() / total, 4),
+            ),
+            dict(
+                age_universe=universe_key,
+                description=label,
+                component="failed_linkage_dwelling_continues_person_not_matched",
+                n=int((~dwelling_gone).sum()),
+                share_of_origin_eligible=round((~dwelling_gone).sum() / total, 4),
             ),
         ]
     )
+    return summary, m.loc[matched_valid]
 
 
 def build_transition_sensitivity(transitions: pd.DataFrame) -> pd.DataFrame:
@@ -219,7 +227,11 @@ def build_transition_sensitivity(transitions: pd.DataFrame) -> pd.DataFrame:
     for key in full.index:
         f_share = full.loc[key, "transition_share"]
         c_share = clean.loc[key, "transition_share"] if key in clean.index else float("nan")
-        abs_diff = round(c_share - f_share, 4)
+        # Percentage-POINT difference: shares are stored as fractions (0-1), so a
+        # percentage-point difference requires multiplying by 100 -- 0.9062 to 0.9104
+        # is a +0.42pp move, not +0.0042pp. Relative difference is a plain ratio and
+        # needs no such rescaling.
+        abs_diff_pp = round((c_share - f_share) * 100, 2)
         rel_diff = round((c_share - f_share) / f_share, 4) if f_share else None
         rows.append(
             dict(
@@ -227,7 +239,7 @@ def build_transition_sensitivity(transitions: pd.DataFrame) -> pd.DataFrame:
                 destination_status=key[1],
                 share_full_panel=f_share,
                 share_excl_flagged=c_share,
-                absolute_difference_pp=abs_diff,
+                absolute_difference_pp=abs_diff_pp,
                 relative_difference=rel_diff,
             )
         )
@@ -251,25 +263,32 @@ def main() -> None:
     print(flags.to_string(index=False))
     print()
 
-    age_cmp = build_age_universe_comparison(q4, q1)
-    age_cmp.to_csv(OUT_DIR / "qlfs_age_universe_comparison.csv", index=False)
-    print(f"Wrote {OUT_DIR / 'qlfs_age_universe_comparison.csv'}")
-    print(age_cmp.to_string(index=False))
+    outcome_tables = []
+    matched_valid_frames = {}
+    for key in AGE_UNIVERSES:
+        summary, matched_valid = build_origin_eligibility_outcomes(q4, q1, key)
+        outcome_tables.append(summary)
+        matched_valid_frames[key] = matched_valid
+    outcomes = pd.concat(outcome_tables, ignore_index=True)
+    outcomes.to_csv(OUT_DIR / "qlfs_origin_eligibility_outcomes.csv", index=False)
+    print(f"Wrote {OUT_DIR / 'qlfs_origin_eligibility_outcomes.csv'}")
+    print(outcomes.to_string(index=False))
     print()
 
-    q4_elig = q4[q4["Status"].isin([1, 2, 3, 4])]
-    q1_elig = q1[q1["Status"].isin([1, 2, 3, 4])]
-    attrition = build_attrition_decomposition(q4_elig, q1_elig)
-    attrition.to_csv(OUT_DIR / "qlfs_attrition_decomposition.csv", index=False)
-    print(f"Wrote {OUT_DIR / 'qlfs_attrition_decomposition.csv'}")
-    print(attrition.to_string(index=False))
-    print()
+    # Transitions use the PRIMARY (origin age 15+) matched-valid population.
+    primary_matched = matched_valid_frames[PRIMARY_AGE_UNIVERSE]
+    primary_matched_flagged = primary_matched.merge(
+        m[["UQNO", "PERSONNO"]].assign(_flagged=any_flag.to_numpy()),
+        on=["UQNO", "PERSONNO"],
+        how="left",
+    )
+    primary_matched_flagged["_flagged"] = primary_matched_flagged["_flagged"].fillna(False)
 
-    all_rows = transition_rows(m, "matched_panel_all")
-    clean = m[~any_flag]
+    all_rows = transition_rows(primary_matched_flagged, "matched_panel_all")
+    clean = primary_matched_flagged[~primary_matched_flagged["_flagged"]]
     all_rows += transition_rows(clean, "matched_panel_excl_flagged")
-    flagged = m[any_flag]
-    all_rows += transition_rows(flagged, "matched_panel_flagged_only")
+    flagged_only = primary_matched_flagged[primary_matched_flagged["_flagged"]]
+    all_rows += transition_rows(flagged_only, "matched_panel_flagged_only")
     transitions = pd.DataFrame(all_rows)
     transitions.to_csv(OUT_DIR / "qlfs_provisional_transitions.csv", index=False)
     print(f"Wrote {OUT_DIR / 'qlfs_provisional_transitions.csv'}")
@@ -278,7 +297,7 @@ def main() -> None:
     sensitivity.to_csv(OUT_DIR / "qlfs_transition_sensitivity.csv", index=False)
     print(f"Wrote {OUT_DIR / 'qlfs_transition_sensitivity.csv'}")
     print()
-    print("=== Full panel vs excl-flagged: absolute (pp) and relative differences ===")
+    print("=== Full panel vs excl-flagged: absolute (pp, 0-100 scale) and relative differences ===")
     print(sensitivity.to_string(index=False))
     print()
     print("All counts above are UNWEIGHTED sample diagnostics -- no QLFS design weight applied.")

@@ -2,95 +2,158 @@
 
 ## What this is, and what it is not
 
-This is a small, explicitly labelled grid of candidate person-level transport-cost
-estimates, computed from ALL administered legs (not leg-1 only), using the NHTS
-person-level `Weight`, with every open assumption this review has flagged disclosed as
-a labelled dimension of the grid rather than picked silently. **It does not resolve
-any of the open decisions listed in `transport_definition.md`'s "What is not yet
-done" section, and it does not touch `transport_budget_share` in
-`configs/baseline.yaml`/`data/moments.csv`.** Its purpose is to make the concrete
-consequences of each open choice visible together, so a decision (Aakash's, not this
-script's) can be made informed by actual numbers rather than in the abstract.
+This is a set of candidate person-level transport-cost estimates, computed from ALL
+administered legs (not leg-1 only), using the NHTS person-level `Weight`, with every
+open assumption this review has flagged disclosed as a labelled dimension rather than
+picked silently. **It does not resolve any of the open decisions listed in
+`transport_definition.md`'s "What is not yet done" section, and it does not touch
+`transport_budget_share` in `configs/baseline.yaml`/`data/moments.csv`.** Its purpose
+is to make the concrete consequences of each open choice visible together, so a
+decision (Aakash's, not this script's) can be made informed by actual numbers.
 
 Reproducible from `scripts/build_transport_candidate_estimates.py`
 (`python -m scripts.build_transport_candidate_estimates`, requires `THESIS_DATA_ROOT`),
-which writes `transport_candidate_estimates.csv` and
-`transport_candidate_frequency_sensitivity.csv`.
+which writes `transport_candidate_estimates.csv`,
+`transport_candidate_frequency_sensitivity.csv`, and
+`transport_wage_ratio_candidates.csv`.
 
-## What "journey total" means here
+## Primary approach vs. diagnostic, stated explicitly
 
-For the hitchhike/listed-mode population, a candidate total sums every administered
-leg's contribution under the chosen assumptions (zero-fare legs contribute R0, a
-positive leg contributes its converted cost). A journey is included in a given
-candidate's average **only if every administered leg converts cleanly** under that
-candidate -- any leg that is ambiguous, an internal inconsistency, "do not know," or
-coded "per year" (n=1, too sparse to convert reliably) excludes the whole journey from
-that candidate, rather than being silently treated as zero or dropped-and-ignored.
-This is why **coverage** (the share of the full 4,655-person population actually
-contributing to a given mean) is reported alongside every number below, not assumed to
-be 100%. Drivers follow the same rule against their single pay/cost pair. Walkers and
-cyclists contribute a fixed R0 (true zero fare by construction, no conversion
-involved).
+- **Weighting: the NHTS person `Weight` is PRIMARY.** Unweighted means are reported
+  as a diagnostic only (`unweighted_mean_rand_diagnostic`), not as a co-equal
+  alternative.
+- **Excursion definition: `round_trip` is PRIMARY**, consistent with the model's own
+  existing interpretation of its flat transport-cost anchor -- Banerjee and
+  Sequeira's R12.50 figure in `configs/baseline.yaml` is explicitly a **return** fare
+  (see `src/calibrate.py`), not a one-direction fare. `one_direction` is retained as
+  an explicit reporting comparison, not as a co-equal candidate.
 
-## What varies across the grid, and why
+## Frequency is a single physical schedule, CORRECTED 2026-09-14
 
-| dimension | values | disclosed status |
+**A real bug in the previous version of this file is fixed here.** Weekly and monthly
+fares were previously converted using a divisor that did not depend on the excursion
+definition at all, so a weekly bus fare produced the *same* per-trip figure under
+`one_direction` and `round_trip` -- unlike the per-single/per-return fields, which
+correctly differed by a factor of 2. The fix: `freq_days_per_week` is a single physical
+quantity -- how many search DAYS a job seeker travels per week, where each search day
+is one round trip (two one-direction legs) -- and every conversion, for every payment
+period, derives from this one number. A weekly fare divided by `freq_days_per_week`
+gives the round-trip cost of one search day directly; the one-direction cost is always
+exactly half of the round-trip cost for the same leg, **by construction**, for every
+period code (not just single/return trip).
+
+**Automated consistency check** (`scripts/build_transport_candidate_estimates.py::check_round_trip_is_twice_one_direction`,
+also regression-tested in `tests/test_transport_candidate_estimates.py`): confirms
+`round_trip == 2 * one_direction` holds exactly for every one of the 4,556 resolved
+records at the primary frequency and driver Scenario A.
+
+## Coverage: directly supported vs. requires a frequency assumption
+
+Every candidate reports **four** coverage figures rather than one: unweighted and
+weighted shares of the population resolved using only per-single/per-return legs (plus
+zero-fare legs) -- **"directly supported", no frequency assumption needed at all** --
+and unweighted and weighted shares of the population that additionally needed a
+per-week or per-month leg -- **"requires frequency assumption"**. The residual is
+"unresolved" (ambiguous/DNK/internal-inconsistency/per-year legs, excluded from every
+candidate here).
+
+| excursion | driver scenario | directly supported (weighted) | requires frequency (weighted, additional) | unresolved (weighted) |
+| --- | --- | --- | --- | --- |
+| round_trip | A | 96.8% | 1.2% | 2.0% |
+| round_trip | B | 98.0% | 1.2% | 0.7% |
+
+The overwhelming majority of the estimate's coverage requires no frequency assumption
+at all -- the per-week/per-month population is small (about 71 people combined), which
+is also why the frequency sensitivity below is modest.
+
+## Primary grid: excursion definition x driver scenario, primary frequency
+
+| excursion definition | driver scenario | weighted mean (PRIMARY) | weighted median | unweighted mean (diagnostic) |
+| --- | --- | --- | --- | --- |
+| **round_trip** | A | **R39.45** | R20.00 | R42.00 |
+| **round_trip** | B | **R38.94** | R20.00 | R41.36 |
+| one_direction (comparison) | A | R19.72 | R10.00 | R21.00 |
+| one_direction (comparison) | B | R19.47 | R10.00 | R20.68 |
+
+Full detail in `transport_candidate_estimates.csv`. Two things worth noting:
+
+- **The driver-scenario choice moves the primary (round_trip) estimate by under 2%**
+  (R39.45 -> R38.94) -- the disputed driver population (80 of 4,655, 1.7%) is small
+  relative to the whole.
+- **Weighting moves the estimate materially** (R42.00 unweighted vs. R39.45 weighted
+  under round_trip/A, about 6%) -- confirming the person weights are not neutral
+  across the transport-cost distribution, which is exactly why weighting is treated
+  as primary rather than optional here.
+
+## Frequency-assumption sensitivity: a bounded range, not just 5-vs-7
+
+**The previous version of this file only tested 5-vs-7 days/week and implicitly
+suggested that comparison represented "the" sensitivity to frequency.** It is
+corrected here with a genuinely bounded grid, `FREQUENCY_GRID = [1, 2, 3, 5, 7]`
+search days/week -- from much less frequent search (once a week) to daily:
+
+| freq (days/week) | round_trip weighted mean | one_direction weighted mean |
 | --- | --- | --- |
-| excursion definition | `one_direction` (per-single-trip cost as-is, per-return-trip halved) vs. `round_trip` (per-single-trip doubled, per-return-trip as-is) | **Not decided.** Both reported; see `transport_definition.md`. |
-| driver `Q433bPay` codes 5/6 | Scenario A (both genuine nonresponse, excluded) vs. Scenario B (code 5 = legitimate zero, code 6 = nonresponse) | **Not decided.** See the Q433bPay reconciliation in `transport_definition.md`. |
-| weighting | NHTS person `Weight` vs. unweighted | Both reported side by side; no single choice adopted. |
-| week/month trip-frequency assumption | primary: 5 trips/week, 21.7 days/month (the wage side's own convention -- **borrowed, explicitly NOT verified to fit a job-search trip frequency**); alternative: 7 trips/week, 30 days/month | **Not decided**, and deliberately varied in a separate sensitivity table (below) rather than fixed once and hidden. |
+| 1 (infrequent) | R41.46 | R20.73 |
+| 2 | R40.20 | R20.10 |
+| 3 | R39.78 | R19.89 |
+| 5 (primary, borrowed from wage-side convention) | R39.45 | R19.72 |
+| 7 (daily) | R39.30 | R19.65 |
 
-## Primary grid (excursion definition × driver scenario, primary frequency assumption)
+Full detail in `transport_candidate_frequency_sensitivity.csv`. Across this bounded
+5x range (1 to 7 days/week), the weighted mean moves by under 5% (R41.46 to R39.30
+under round_trip) -- the frequency assumption genuinely does not matter much for THIS
+aggregate, because the week/month sub-population is small. This is now a defensible
+claim across a real range, not an extrapolation from one narrow comparison.
 
-| excursion definition | driver scenario | coverage | unweighted mean | weighted mean | weighted median |
-| --- | --- | --- | --- | --- | --- |
-| one_direction | A | 4,556 / 4,655 (97.9%) | R21.24 | R19.97 | R10.50 |
-| one_direction | B | 4,626 / 4,655 (99.4%) | R20.92 | R19.72 | R10.00 |
-| round_trip | A | 4,556 / 4,655 (97.9%) | R42.00 | R39.45 | R20.00 |
-| round_trip | B | 4,626 / 4,655 (99.4%) | R41.36 | R38.94 | R20.00 |
+## Candidate transport-to-wage ratio, with uncertainty and driver-code sensitivity
 
-Full detail in `transport_candidate_estimates.csv`. Three things worth noting about
-this table, not to be read past:
+Built by applying the SAME wage-side methodology already used for the canonical
+`transport_budget_share` moment (see `notebooks/moments/02_transport_budget_share.ipynb`):
+weighted median monthly wage over NHTS respondents with a usable `Q410Salary` +
+`Q411Payperiod`, converted to a daily rate at 21.7 working days/month, reproduced live
+here (n=20,867, weighted median R4,300.00, daily wage R198.16 -- exact match to the
+notebook's own figures). The numerator is the primary (round_trip, weighted) candidate
+transport-cost mean from above. Uncertainty is a weighted bootstrap (2,000 resamples,
+cost and wage populations resampled independently each draw, person weight as
+resampling probability), matching the canonical moment's own bootstrap method exactly.
 
-- **The excursion definition roughly doubles the estimate** (R19.97 vs. R39.45
-  weighted mean, one_direction vs. round_trip, holding the driver scenario fixed at
-  A) -- entirely mechanical, since round_trip treats every per-single-trip
-  observation (the largest sub-population, 1,761 positive-cost observations) as
-  needing doubling. This is the single largest source of variation in this grid and
-  is exactly why it is not picked here.
-- **The driver-scenario choice moves the estimate by under 2%** (R19.97 -> R19.72
-  under one_direction) -- much smaller than the excursion-definition effect, because
-  the disputed driver population (80 of 4,655, 1.7%) is small relative to the whole,
-  even though the scenario choice is a large swing (0 vs. 70 driver zero fares) within
-  that subgroup.
-- **Weighting moves the estimate by 6-7%** (R21.24 unweighted vs. R19.97 weighted
-  under one_direction/A) -- the person weights are not uniform across the transport
-  cost distribution, so ignoring them is not neutral.
+| driver scenario | point estimate | 95% bootstrap CI | bootstrap SE |
+| --- | --- | --- | --- |
+| A | **0.1991** | [0.1846, 0.2214] | 0.0094 |
+| B | **0.1965** | [0.1815, 0.2184] | 0.0094 |
 
-## Frequency-assumption sensitivity
+**Sample definitions, stated explicitly:**
+- Transport-cost numerator: job-search travellers (`Q47Travlooking==Yes`) across
+  walk/cycle/drive/hitchhike/listed-mode, all administered legs, round-trip basis,
+  weighted by NHTS `Weight`; unresolved journeys (ambiguous/DNK/internal-inconsistency/
+  per-year legs) excluded -- 97.9-99.4% weighted coverage depending on driver scenario
+  (see the coverage table above).
+- Wage denominator: n=20,867 NHTS respondents with a valid `Q410Salary` and a stated
+  `Q411Payperiod`, weighted, median taken (not mean, to match the model's single-wage
+  numeraire interpretation, exactly as the canonical moment already does).
 
-| excursion definition | frequency assumption | weighted mean |
-| --- | --- | --- |
-| one_direction | 5/week, 21.7 days/month (primary) | R19.97 |
-| one_direction | 7/week, 30 days/month (alternative) | R19.83 |
-| round_trip | 5/week, 21.7 days/month (primary) | R39.45 |
-| round_trip | 7/week, 30 days/month (alternative) | R39.30 |
-
-Full detail in `transport_candidate_frequency_sensitivity.csv` (Scenario A only; the
-driver-scenario choice barely interacts with the frequency choice since disputed
-driver records never carry a week/month payment period). The frequency assumption
-moves the aggregate estimate by under 1% either way, because the week/month
-sub-population is small (29 people combined, against 1,761+445 single/return-trip
-observations) -- **this does not mean the frequency question is unimportant to
-resolve**, only that its effect on THIS particular aggregate happens to be small; a
-target that weighted the week/month population more heavily (e.g. a
-frequency-specific breakdown) would be more sensitive to it.
+**This candidate ratio (~0.197-0.199) is roughly double the current canonical
+`transport_budget_share` value of 0.1058.** The gap is largely mechanical: the
+canonical target's numerator currently sums all four raw `Q429b3Cost1`-`Q432b3Cost4`
+columns per person without any payment-period conversion (treating a per-week or
+per-month fare as if it were a single-day cost) and treats ambiguous/DNK costs as
+R0 rather than excluding them -- both are known, already-documented open findings in
+`target_dictionary.csv`, not new discoveries here. The `one_direction` comparison
+ratio (dividing the one_direction candidate mean by the same daily wage) works out to
+roughly 0.0995-0.0982, much closer to the current 0.1058 -- consistent with the
+canonical numerator's mixed-basis sum landing closer to a one-direction-like unit than
+a return-trip unit by accident, not by design. **None of this is proposed as a
+replacement value.** It is reported so that the size and likely direction of a future
+correction is visible ahead of the actual measurement-specification decision.
 
 ## What remains genuinely open
 
-Everything this grid varies remains genuinely undecided: the excursion definition,
-the driver Scenario A/B choice, whether to weight, and the trip-frequency assumption.
-This file makes their consequences visible; it does not choose among them. No
+The excursion definition is now proposed as round_trip (primary) rather than left
+symmetric between two options, consistent with the model's own existing convention --
+but this is a PROPOSAL for review, not an adopted decision, and one_direction remains
+reported as a first-class comparison. The driver Scenario A/B choice, the exact
+frequency assumption (though shown to matter little in aggregate), and whether/how to
+adopt any of this as `transport_budget_share` all remain open. No
 `transport_budget_share` value is reported or implied as a replacement for the
 current 0.1058.

@@ -455,38 +455,60 @@ def build_provisional_reconstruction(df: pd.DataFrame) -> pd.DataFrame:
             )
         )
 
-    # Driver side, Scenario A/B disclosed, corrected sentinel AND numeric-zero handling
+    # Driver side, Scenario A/B disclosed, corrected sentinel AND numeric-zero handling.
+    # Positive-only and zero-inclusive means are reported as SEPARATE, distinctly
+    # labelled populations (CORRECTED 2026-09-14) -- they answer different questions
+    # (typical PAID cost vs. typical cost across everyone who reported a period) and
+    # must not be presented as a single unlabelled "driver mean".
     payd = df.loc[masks["drive"], "Q433bPay"]
     costd = df.loc[masks["drive"], "Q434bCost"]
-    numeric_d = costd.notna() & ~costd.isin([DRIVER_COST_NA, DRIVER_COST_UNSPEC, 0])
+    resolved_d = costd.notna() & ~costd.isin([DRIVER_COST_NA, DRIVER_COST_UNSPEC])
+    positive_d = resolved_d & (costd != 0)
     driver_periods = {1: "per_single_trip", 2: "per_return_trip", 3: "per_week", 4: "per_month"}
     for code, label in driver_periods.items():
-        m = (payd == code) & numeric_d
-        vals = costd[m]
-        n = int(m.sum())
-        note = (
-            "Codes 1-4 only (unambiguous under both scenarios; see transport_definition.md "
-            "for the Q433bPay code 5/6 ambiguity, which is NOT included here). Positive "
-            "cost only -- numeric zero (cost==0) excluded, CORRECTED 2026-09-14, and counted "
-            "as a legitimate zero fare in transport_missingness.csv instead. Cost "
-            "sentinels 8888 (not applicable) and 9999 (unspecified) excluded "
-            "field-specifically for Q434bCost, confirmed live against "
-            "meta.variable_value_labels."
-        )
-        if n <= 3:
-            note += f" n={n}, not usable as a reliable point estimate."
-        rows.append(
-            dict(
-                population="drive_unambiguous_codes_1_4",
-                payment_period=label,
-                n=n,
-                mean_cost_rand=round(vals.mean(), 2) if n else None,
-                median_cost_rand=vals.median() if n else None,
-                min_rand=vals.min() if n else None,
-                max_rand=vals.max() if n else None,
-                note=note,
+        for population, mask, extra_note in (
+            (
+                "drive_unambiguous_codes_1_4_positive_only",
+                positive_d,
+                "Positive cost only -- numeric zero (cost==0) excluded, CORRECTED "
+                "2026-09-14, and counted as a legitimate zero fare in "
+                "transport_missingness.csv instead. Answers 'what does a driver who "
+                "pays something typically pay'.",
+            ),
+            (
+                "drive_unambiguous_codes_1_4_incl_numeric_zero",
+                resolved_d,
+                "Includes numeric-zero (cost==0) observations alongside positive costs "
+                "-- labelled SEPARATELY from the positive-only rows above, "
+                "CORRECTED 2026-09-14 (previously the two were not distinguished at "
+                "all). Answers 'what does the average driver reporting this period "
+                "pay, including those who paid nothing'.",
+            ),
+        ):
+            m = (payd == code) & mask
+            vals = costd[m]
+            n = int(m.sum())
+            note = (
+                "Codes 1-4 only (unambiguous under both scenarios; see "
+                "transport_definition.md for the Q433bPay code 5/6 ambiguity, which "
+                "is NOT included here). Cost sentinels 8888 (not applicable) and 9999 "
+                "(unspecified) excluded field-specifically for Q434bCost, confirmed "
+                f"live against meta.variable_value_labels. {extra_note}"
             )
-        )
+            if n <= 3:
+                note += f" n={n}, not usable as a reliable point estimate."
+            rows.append(
+                dict(
+                    population=population,
+                    payment_period=label,
+                    n=n,
+                    mean_cost_rand=round(vals.mean(), 2) if n else None,
+                    median_cost_rand=vals.median() if n else None,
+                    min_rand=vals.min() if n else None,
+                    max_rand=vals.max() if n else None,
+                    note=note,
+                )
+            )
 
     return pd.DataFrame(rows)
 
