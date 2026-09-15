@@ -1,0 +1,604 @@
+{
+  "1_reproduced_original_failure": {
+    "original_flat_h": 0.004097307692307692,
+    "path": [
+      {
+        "month": 1,
+        "before": 0.04,
+        "cost": 0.007405,
+        "credit": 0.004097307692307692,
+        "affordable": true,
+        "after": 0.03669230769230769
+      },
+      {
+        "month": 2,
+        "before": 0.03669230769230769,
+        "cost": 0.007405,
+        "credit": 0.004097307692307692,
+        "affordable": true,
+        "after": 0.03338461538461538
+      },
+      {
+        "month": 3,
+        "before": 0.03338461538461538,
+        "cost": 0.007405,
+        "credit": 0.004097307692307692,
+        "affordable": true,
+        "after": 0.03007692307692307
+      },
+      {
+        "month": 4,
+        "before": 0.03007692307692307,
+        "cost": 0.007405,
+        "credit": 0.004097307692307692,
+        "affordable": true,
+        "after": 0.02676923076923076
+      },
+      {
+        "month": 5,
+        "before": 0.02676923076923076,
+        "cost": 0.007405,
+        "credit": 0.004097307692307692,
+        "affordable": true,
+        "after": 0.02346153846153845
+      },
+      {
+        "month": 6,
+        "before": 0.02346153846153845,
+        "cost": 0.007405,
+        "credit": 0.004097307692307692,
+        "affordable": true,
+        "after": 0.02015384615384614
+      },
+      {
+        "month": 7,
+        "before": 0.02015384615384614,
+        "cost": 0.007405,
+        "credit": 0.004097307692307692,
+        "affordable": true,
+        "after": 0.01684615384615383
+      },
+      {
+        "month": 8,
+        "before": 0.01684615384615383,
+        "cost": 0.007405,
+        "credit": 0.004097307692307692,
+        "affordable": true,
+        "after": 0.013538461538461522
+      },
+      {
+        "month": 9,
+        "before": 0.013538461538461522,
+        "cost": 0.007405,
+        "credit": 0.004097307692307692,
+        "affordable": true,
+        "after": 0.010230769230769213
+      },
+      {
+        "month": 10,
+        "before": 0.010230769230769213,
+        "cost": 0.007405,
+        "credit": 0.004097307692307692,
+        "affordable": true,
+        "after": 0.006923076923076905
+      },
+      {
+        "month": 11,
+        "before": 0.006923076923076905,
+        "affordable": false
+      }
+    ]
+  },
+  "2_corrected_flat_h_cross_check": {
+    "h": 0.0047,
+    "path": [
+      {
+        "month": 1,
+        "before": 0.04,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.037295
+      },
+      {
+        "month": 2,
+        "before": 0.037295,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.03459
+      },
+      {
+        "month": 3,
+        "before": 0.03459,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.031885000000000004
+      },
+      {
+        "month": 4,
+        "before": 0.031885000000000004,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.02918
+      },
+      {
+        "month": 5,
+        "before": 0.02918,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.026475000000000002
+      },
+      {
+        "month": 6,
+        "before": 0.026475000000000002,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.023770000000000003
+      },
+      {
+        "month": 7,
+        "before": 0.023770000000000003,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.021065000000000004
+      },
+      {
+        "month": 8,
+        "before": 0.021065000000000004,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.018360000000000005
+      },
+      {
+        "month": 9,
+        "before": 0.018360000000000005,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.015655000000000006
+      },
+      {
+        "month": 10,
+        "before": 0.015655000000000006,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.012950000000000007
+      },
+      {
+        "month": 11,
+        "before": 0.012950000000000007,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.010245000000000008
+      },
+      {
+        "month": 12,
+        "before": 0.010245000000000008,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.007540000000000008
+      },
+      {
+        "month": 13,
+        "before": 0.007540000000000008,
+        "cost": 0.007405,
+        "credit": 0.0047,
+        "affordable": true,
+        "after": 0.004835000000000008
+      }
+    ]
+  },
+  "3_required_phi_per_target_fare": {
+    "double_b": 0.4507943512797881,
+    "primary_b": 0.599426063470628,
+    "b_zero": 0.6914980863860033
+  },
+  "3_chosen_phi": 0.75,
+  "3_proportional_design_paths_at_x0_0_04": {
+    "double_b": [
+      {
+        "month": 1,
+        "before": 0.04,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.03858375000000001
+      },
+      {
+        "month": 2,
+        "before": 0.03858375000000001,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.03716750000000001
+      },
+      {
+        "month": 3,
+        "before": 0.03716750000000001,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.03575125000000002
+      },
+      {
+        "month": 4,
+        "before": 0.03575125000000002,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.03433500000000002
+      },
+      {
+        "month": 5,
+        "before": 0.03433500000000002,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.03291875000000002
+      },
+      {
+        "month": 6,
+        "before": 0.03291875000000002,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.03150250000000002
+      },
+      {
+        "month": 7,
+        "before": 0.03150250000000002,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.030086250000000016
+      },
+      {
+        "month": 8,
+        "before": 0.030086250000000016,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.028670000000000015
+      },
+      {
+        "month": 9,
+        "before": 0.028670000000000015,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.027253750000000014
+      },
+      {
+        "month": 10,
+        "before": 0.027253750000000014,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.025837500000000013
+      },
+      {
+        "month": 11,
+        "before": 0.025837500000000013,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.024421250000000012
+      },
+      {
+        "month": 12,
+        "before": 0.024421250000000012,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.02300500000000001
+      },
+      {
+        "month": 13,
+        "before": 0.02300500000000001,
+        "cost": 0.005665,
+        "credit": 0.00424875,
+        "affordable": true,
+        "after": 0.02158875000000001
+      }
+    ],
+    "primary_b": [
+      {
+        "month": 1,
+        "before": 0.04,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.038148749999999995
+      },
+      {
+        "month": 2,
+        "before": 0.038148749999999995,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.036297499999999996
+      },
+      {
+        "month": 3,
+        "before": 0.036297499999999996,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.03444625
+      },
+      {
+        "month": 4,
+        "before": 0.03444625,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.032595
+      },
+      {
+        "month": 5,
+        "before": 0.032595,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.030743749999999997
+      },
+      {
+        "month": 6,
+        "before": 0.030743749999999997,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.028892499999999998
+      },
+      {
+        "month": 7,
+        "before": 0.028892499999999998,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.02704125
+      },
+      {
+        "month": 8,
+        "before": 0.02704125,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.02519
+      },
+      {
+        "month": 9,
+        "before": 0.02519,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.023338750000000002
+      },
+      {
+        "month": 10,
+        "before": 0.023338750000000002,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.021487500000000003
+      },
+      {
+        "month": 11,
+        "before": 0.021487500000000003,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.01963625
+      },
+      {
+        "month": 12,
+        "before": 0.01963625,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.017785000000000002
+      },
+      {
+        "month": 13,
+        "before": 0.017785000000000002,
+        "cost": 0.007405,
+        "credit": 0.00555375,
+        "affordable": true,
+        "after": 0.015933750000000003
+      }
+    ],
+    "b_zero": [
+      {
+        "month": 1,
+        "before": 0.04,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.037713750000000004
+      },
+      {
+        "month": 2,
+        "before": 0.037713750000000004,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.0354275
+      },
+      {
+        "month": 3,
+        "before": 0.0354275,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.03314125
+      },
+      {
+        "month": 4,
+        "before": 0.03314125,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.030854999999999997
+      },
+      {
+        "month": 5,
+        "before": 0.030854999999999997,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.028568749999999997
+      },
+      {
+        "month": 6,
+        "before": 0.028568749999999997,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.026282499999999997
+      },
+      {
+        "month": 7,
+        "before": 0.026282499999999997,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.023996249999999997
+      },
+      {
+        "month": 8,
+        "before": 0.023996249999999997,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.021709999999999997
+      },
+      {
+        "month": 9,
+        "before": 0.021709999999999997,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.019423749999999997
+      },
+      {
+        "month": 10,
+        "before": 0.019423749999999997,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.017137499999999996
+      },
+      {
+        "month": 11,
+        "before": 0.017137499999999996,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.014851249999999996
+      },
+      {
+        "month": 12,
+        "before": 0.014851249999999996,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.012564999999999996
+      },
+      {
+        "month": 13,
+        "before": 0.012564999999999996,
+        "cost": 0.009145,
+        "credit": 0.00685875,
+        "affordable": true,
+        "after": 0.010278749999999996
+      }
+    ]
+  },
+  "4_multi_trip_net_change_c_times_phi_minus_n": {
+    "double_b_n1": -0.00141625,
+    "primary_b_n1": -0.0018512500000000005,
+    "b_zero_n1": -0.00228625,
+    "double_b_n2": -0.00708125,
+    "primary_b_n2": -0.00925625,
+    "b_zero_n2": -0.01143125,
+    "double_b_n3": -0.01274625,
+    "primary_b_n3": -0.01666125,
+    "b_zero_n3": -0.02057625
+  },
+  "5_actual_fare_domain_check_a_0_001": {
+    "seed_1": {
+      "c_min": 0.001524986,
+      "h_i": 0.0011437395000000001,
+      "h_less_than_c": true
+    },
+    "seed_2": {
+      "c_min": 0.001432336,
+      "h_i": 0.001074252,
+      "h_less_than_c": true
+    },
+    "seed_3": {
+      "c_min": 0.001276179,
+      "h_i": 0.00095713425,
+      "h_less_than_c": true
+    }
+  },
+  "6_joint_domain_feasible": {
+    "phi": 0.75,
+    "satisfies_all_target_fare_envelopes": true,
+    "satisfies_global_scarcity_at_actual_min_fares": true
+  },
+  "7a_transport_subsidy_ledger_identity": {
+    "0.0": {
+      "gross_fare": 0.007405,
+      "out_of_pocket": 0.007405,
+      "subsidy_payment": 0.0,
+      "h": 0.00555375,
+      "net_change_active_month": -0.0018512500000000005
+    },
+    "0.25": {
+      "gross_fare": 0.007405,
+      "out_of_pocket": 0.00555375,
+      "subsidy_payment": 0.00185125,
+      "h": 0.0041653125,
+      "net_change_active_month": -0.0013884375
+    },
+    "0.5": {
+      "gross_fare": 0.007405,
+      "out_of_pocket": 0.0037025,
+      "subsidy_payment": 0.0037025,
+      "h": 0.002776875,
+      "net_change_active_month": -0.0009256250000000002
+    },
+    "1.0": {
+      "gross_fare": 0.007405,
+      "out_of_pocket": 0.0,
+      "subsidy_payment": 0.007405,
+      "h": 0.0,
+      "net_change_active_month": 0.0
+    }
+  },
+  "7b_illustrative_policy_arm_total_h_payment": {
+    "per_trip_h": 0.00555375,
+    "note": "toy eligible-U-month counts, NOT a simulated result",
+    "eligible_u_months": {
+      "control": 1000,
+      "transport_subsidy_arm": 1400,
+      "wage_subsidy_arm": 1250
+    },
+    "totals": {
+      "control": 5.55375,
+      "transport_subsidy_arm": 7.77525,
+      "wage_subsidy_arm": 6.942187499999999
+    }
+  }
+}
