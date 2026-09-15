@@ -11,6 +11,7 @@ import random
 import pytest
 
 from scripts.observation_layer import (
+    StreamingCumulativeActiveState,
     StreamingEpisodeClockState,
     StreamingMonthlySummary,
     StreamingTransportSummary,
@@ -468,6 +469,26 @@ class TestStreamingEpisodeClockState:
     def test_unrecognised_category_rejected(self):
         with pytest.raises(ValueError):
             StreamingEpisodeClockState(0).observe("Q")
+
+
+class TestStreamingCumulativeActiveState:
+    def test_matches_batch_on_the_worked_example(self):
+        state = StreamingCumulativeActiveState()
+        streamed = [state.observe(c) for c in WORKED_EXAMPLE]
+        assert streamed == cumulative_active_months(WORKED_EXAMPLE)
+
+    def test_matches_batch_on_randomised_sequences(self):
+        rng = random.Random(7)
+        for _ in range(50):
+            length = rng.randint(1, 40)
+            cats = [rng.choice(["E", "U", "D"]) for _ in range(length)]
+            state = StreamingCumulativeActiveState()
+            streamed = [state.observe(c) for c in cats]
+            assert streamed == cumulative_active_months(cats), f"mismatch for {cats}"
+
+    def test_unrecognised_category_rejected(self):
+        with pytest.raises(ValueError):
+            StreamingCumulativeActiveState().observe("Q")
 
 
 class TestStreamingMonthlySummary:

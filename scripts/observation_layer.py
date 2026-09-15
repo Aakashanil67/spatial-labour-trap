@@ -337,6 +337,37 @@ class StreamingEpisodeClockState:
         return None if self.start is None else t - self.start
 
 
+class StreamingCumulativeActiveState:
+    """O(1)-memory-per-agent streaming equivalent of cumulative_active_months(): processes
+    one observation at a time via observe(), matching that function's behaviour exactly
+    (validated in tests/test_observation_layer.py). Added 2026-09-15 alongside
+    StreamingEpisodeClockState for the feasibility-screen development runner, which needs
+    every approved clock (k=0/1/3/infinity AND cumulative-active) available in streaming
+    form."""
+
+    __slots__ = ("completed",)
+
+    def __init__(self):
+        self.completed: int | None = None
+
+    def observe(self, category: str) -> int | None:
+        if category not in CATEGORIES:
+            raise ValueError(f"unrecognised category {category!r}")
+        if category == "E":
+            self.completed = None
+            return None
+        if self.completed is None:
+            self.completed = 0
+            result = 0
+            if category == "U":
+                self.completed += 1
+            return result
+        result = self.completed
+        if category == "U":
+            self.completed += 1
+        return result
+
+
 class StreamingMonthlySummary:
     """Per-step SUFFICIENT SUMMARY for long_term_candidate_share_monthly(), accumulated one
     (agent, step) observation at a time without retaining the underlying per-agent rows: only
