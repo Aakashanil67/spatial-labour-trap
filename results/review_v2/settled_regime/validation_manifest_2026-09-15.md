@@ -198,24 +198,36 @@ a judgement call, disclosed as such rather than hidden inside a precise-looking 
 
 **Filled in with the actual development-screen spread** (`feasibility_screen_2026-09-15.csv`,
 27 trajectories = 9 parameter combinations x 3 seeds; computed for
-`discouraged_share_EUD_post_matching_equal_month`, the only new moment with a `U`-classified
-stock large enough at every combination to compute a seed-to-seed standard deviation): the
-across-seed standard deviation at each of the 9 (`a`, `firm_kappa`) combinations, pooled over
-the 3 windows, ranges from 0.00004 (highest fare x highest kappa, near-empty stock) up to
-**0.03029** (anchor fare x anchor kappa, window 3) -- mean 0.00778 across all 27
-combination/window cells. Applying the proposed rule with the observed MAXIMUM as the
-"nearest matching combination" scale for the anchor-region candidates (T1.*, T2.*) and the
-0.01 floor elsewhere gives a concrete, non-hypothetical number: **tolerance =
-max(per-combination seed std, 0.01)**, which evaluates to approximately 0.01 (floor-bound)
-for every combination except the anchor-fare/anchor-kappa region, where it rises to
-~0.02-0.03 (std-bound). For the k=0/k=1 primary long-term-share clocks and the two transport
-weightings, the `n=3` seed stock was frequently too small (`n_stock` in the single digits, or
-zero) to compute a meaningful standard deviation at the higher-kappa combinations at all --
-this is disclosed as a genuine limitation of the `n=3` development evidence, not smoothed
-over: **a validation-scale (15-seed) tolerance estimate for these clock moments specifically
-would need the actual validation campaign, or a larger development re-screen, not this batch's
-27-trajectory screen.** This numeric fill-in remains a PROPOSAL pending Aakash's approval, not
-an adopted rule.
+`discouraged_share_EUD_post_matching_equal_month`): the across-seed standard deviation at each
+of the 9 (`a`, `firm_kappa`) combinations, pooled over the 3 windows, ranges from 0.00004
+(highest fare x highest kappa, near-empty stock) up to **0.03029** (anchor fare x anchor kappa,
+window 3) -- mean 0.00778 across all 27 combination/window cells. Applying the proposed rule
+with the observed MAXIMUM as the "nearest matching combination" scale for the anchor-region
+candidates (T1.*, T2.*) and the 0.01 floor elsewhere gives a concrete, non-hypothetical number:
+**tolerance = max(per-combination seed std, 0.01)**, which evaluates to approximately 0.01
+(floor-bound) for every combination except the anchor-fare/anchor-kappa region, where it rises to
+~0.02-0.03 (std-bound). For the k=0/k=1 primary long-term-share clocks specifically, the `n=3`
+seed stock was frequently too small (`n_stock` in the single digits, or zero) at the higher-kappa
+combinations to compute a meaningful standard deviation at all.
+
+**WITHDRAWN, 2026-09-15 (second pass), per an independent review's correction 6**: the rule
+above is NOT adopted, and should not be used. It conflates three-development-seed SIMULATION
+spread with EMPIRICAL (QLFS/NHTS) target uncertainty -- the model estimator changing does not
+make the existing survey-based `combined_se` evidence (F6.5) cease to exist or become
+inapplicable in principle; it omits the estimated PAIRED DIFFERENCE's own standard error from the
+comparison rule entirely; and it perversely permits MORE drift exactly where the simulation is
+noisiest, rather than less. It also incorrectly implied that the two transport weightings and the
+discouraged-share series have precision problems tied to a small `U` stock -- independently
+re-verified false: `transport_ratio_equal_person`, `transport_ratio_trip_weighted`, and
+`discouraged_share_EUD_post_matching_equal_month` are all non-null in every one of the screen's 81
+rows (the discouraged-share denominator is `E+U+D`, not `U`; transport includes genuine hire-month
+travellers regardless of the concurrent `U` stock). Only the k=0/k=1 long-term-share CLOCKS
+themselves are `U`-stock-limited at `n=3` seeds, as stated above. Once the model/observation
+specification is settled, a practical tolerance should be proposed anchored to the APPROPRIATE
+empirical uncertainty for each moment (existing `combined_se` for old moments; a separately
+estimated empirical uncertainty for new ones, not simulation spread), with simulation error
+estimated separately from it, and an uncertainty-aware paired reference comparison -- not
+requested of Aakash as an arbitrary SD-floor choice before that groundwork is done.
 
 ## F6.5 -- Reference comparisons and tolerances, specified exactly
 
