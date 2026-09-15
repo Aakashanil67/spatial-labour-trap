@@ -147,19 +147,30 @@ a hand calculation under that exact map.
 Run: `pytest -q tests/test_qlfs_joint_covariance_protocol.py` (5 passed, no live microdata
 required).
 
-## What is NOT done here, stated precisely
+## Update, 2026-09-15: exercised live, as a review-only empirical pipeline
 
-- No live run against `THESIS_DATA_ROOT`'s real stock/matched frames through this prototype
-  (Section 1's consistency/overlap figures were checked live via the EXISTING
-  `load_quarter()`/`build_matched_panel()` functions, but `joint_stock_transition_bootstrap()`
-  itself has only been exercised against synthetic fixtures).
-- No integration into `build_qlfs_candidate_moments.py`'s `main()` or any `data/review_v2/*.csv`
-  output.
-- No embedding into a full NHTS+QLFS matrix (Section 5's stacking step).
-- No adoption anywhere in `data/moments.csv` or any calibration code.
+Per Aakash's instruction ("integrate and exercise the accepted joint-covariance prototype as
+a review-only empirical pipeline"), `main()` was added (still in this same prototype module,
+NOT moved into `build_qlfs_candidate_moments.py`) and run live against `THESIS_DATA_ROOT`:
+both populations (`all_ages`, `15_64`), 2,000 replicates each, primary (`consistent`) linkage.
+Point estimates reproduce the canonical/candidate figures closely (e.g. `discouraged_share`
+0.134124 vs. the canonical 0.134282; `long_term_share` 0.774469 vs. 0.774421 -- within ordinary
+bootstrap Monte Carlo noise at this replicate count, not a discrepancy). Output:
+`data/review_v2/qlfs_joint_stock_transition_covariance.csv` (the population-keyed 5x5
+covariance itself) and `qlfs_joint_stock_transition_summary.csv` (point estimates and SEs).
+Also see the docstring correction to `joint_stock_transition_bootstrap()` at the top of
+`scripts/qlfs_joint_covariance_protocol.py` (Astra's COMPLETION_REVIEW.md item 5): a
+matched-only household is NOT given multiplier 0 -- it is unioned into the shared per-stratum
+draw like any other household, exactly as the code below this docstring has always done.
 
-**If a next batch wants this run for real**: `joint_stock_transition_bootstrap(stock_df,
-matched_df, n_boot=2000, seed=42)` against the live 2026-Q1 stock frame and the live matched
-panel (both population-filtered consistently per Section 4) would produce the actual 5x5
-covariance matrix directly -- the prototype is deliberately written close enough to
-production shape that this is a small, low-risk follow-up, not a rebuild.
+## What is still NOT done, stated precisely
+
+- No integration into `build_qlfs_candidate_moments.py`'s `main()` or any of ITS
+  `data/review_v2/qlfs_*.csv` outputs -- this remains a SEPARATE pipeline/output pair,
+  deliberately not merged into the production candidate-moments script.
+- No embedding into a full NHTS+QLFS matrix (Section 5's stacking step) -- the transport
+  ratio's own bootstrap variance has not been combined with this 5x5 block.
+- No adoption anywhere in `data/moments.csv` or any calibration code -- review-stage output
+  only, consumed by nothing in `src/`.
+- The raw-linkage sensitivity population is not computed here (only `consistent` linkage) --
+  would need a second full bootstrap pass, not run this batch.

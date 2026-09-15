@@ -20,8 +20,14 @@ sampling covariance between stock and transition moments.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+OUT_DIR = REPO_ROOT / "data" / "review_v2"
 
 
 def _draw_multiplier_map(strata_households: dict, rng: np.random.Generator) -> dict[str, int]:
@@ -52,11 +58,27 @@ def joint_stock_transition_bootstrap(
 
     Returns one row per replicate: discouraged_share, employment_share, long_term_share
     (from stock_df under that replicate's multipliers), u_to_e_quarterly, e_to_non_e_quarterly
-    (from matched_df under the SAME replicate's multipliers, for households whose UQNO is
-    shared -- a matched_df household whose UQNO does not appear in stock_df's frame at all
-    gets multiplier 0 in this protocol, since the stock frame is the anchor cross-section;
-    see the .md spec for why this is expected to be rare-to-never for the destination
-    quarter and what the exceptions mean)."""
+    (from matched_df under the SAME replicate's multipliers).
+
+    CORRECTED 2026-09-15 (Astra COMPLETION_REVIEW.md item 5): an earlier version of this
+    docstring claimed a matched_df-only household (one whose UQNO does not appear in
+    stock_df) gets multiplier 0 "since the stock frame is the anchor cross-section." That
+    contradicts what the code actually does, below: the per-stratum household universe is
+    the UNION of stock_df's and matched_df's UQNO sets (see the loop unioning matched-only
+    households into `strata` right after this docstring), so a matched-only household IS
+    eligible to be drawn like any other household in its stratum -- it simply has no rows in
+    stock_df to contribute to the stock moments when drawn, exactly as a stock-only
+    household has no rows in matched_df to contribute to the transition moments. Neither
+    "anchors" the other; both are unioned into one shared per-stratum draw.
+
+    This remains conditional on the OBSERVED linkage/analysis samples, not a correction to
+    them: a household absent from matched_df entirely (through panel attrition, not captured
+    at all in this quarter-pair) is absent from the union too, and this protocol's shared
+    multipliers do not recover it, prove household identity across quarters beyond the
+    existing UQNO-based linkage, or reconstruct the unavailable PSU design -- they address
+    JOINT RESAMPLING DEPENDENCE between the two estimators over the households both already
+    observe, nothing more. See the .md spec's "unmatched, excluded and quarter-specific
+    records" section for the full accounting of who is and is not covered."""
     strata: dict = {}
     for h, g in stock_df.groupby("Stratum"):
         strata[h] = g["UQNO"].unique()
@@ -112,3 +134,82 @@ def joint_stock_transition_bootstrap(
             )
         )
     return pd.DataFrame(rows)
+
+
+def _cov_to_long(cov_df: pd.DataFrame, population: str) -> pd.DataFrame:
+    long = cov_df.reset_index().rename(columns={"index": "moment_i"})
+    long = long.melt(id_vars="moment_i", var_name="moment_j", value_name="covariance")
+    long.insert(0, "population", population)
+    return long
+
+
+def main() -> None:
+    """Integrates the prototype as a review-only EMPIRICAL pipeline (Astra
+    COMPLETION_REVIEW.md's "accept the prototype... exercise it"), run live against
+    THESIS_DATA_ROOT -- still not wired into build_qlfs_candidate_moments.py's own main() or
+    any data/moments.csv value; writes only to data/review_v2/
+    qlfs_joint_stock_transition_covariance.csv, a NEW, separate output file.
+
+    Requires THESIS_DATA_ROOT set. Both populations (all_ages, 15_64) computed, matching the
+    finding-1 population-keying convention established in build_qlfs_candidate_moments.py.
+    Primary linkage is 'consistent' (demographic-consistency filter), matching that script's
+    own primary; the raw-linkage sensitivity is not computed here (would need a second full
+    bootstrap pass -- left for a future batch, not required for this integration check)."""
+    from scripts.build_qlfs_candidate_moments import (
+        PANEL_COLS,
+        STOCK_COLS,
+        build_matched_panel,
+        load_quarter,
+        restrict_working_age,
+    )
+
+    data_root = Path(os.environ["THESIS_DATA_ROOT"])
+    q1_path = data_root / "qlfs-2026-q1-v1" / "qlfs-2026-q1-v1.dta"
+    q4_path = data_root / "qlfs-2025-04" / "qlfs-2025-q4-v1.dta"
+
+    stock_full = load_quarter(q1_path, STOCK_COLS, encoding="latin1")
+    q4_panel = load_quarter(q4_path, PANEL_COLS)
+    q1_panel = load_quarter(q1_path, PANEL_COLS, encoding="latin1")
+    matched_full = build_matched_panel(q4_panel, q1_panel)
+    matched_consistent = matched_full[matched_full["consistent"]]
+
+    populations = {
+        "all_ages": (stock_full, matched_consistent),
+        "15_64": (
+            restrict_working_age(stock_full, "Q14AGE"),
+            restrict_working_age(matched_consistent, "Q14AGE_q4"),
+        ),
+    }
+
+    cov_frames = []
+    summary_rows = []
+    for population, (stock_df, matched_df) in populations.items():
+        boot = joint_stock_transition_bootstrap(stock_df, matched_df, n_boot=2000, seed=42)
+        cov_frames.append(_cov_to_long(boot.cov(), population))
+        print(f"\n=== {population}: n_stock={len(stock_df)}, n_matched={len(matched_df)} ===")
+        print("point estimate (replicate mean):")
+        print(boot.mean())
+        print("bootstrap SE (replicate std):")
+        print(boot.std(ddof=1))
+        for moment in boot.columns:
+            summary_rows.append(
+                dict(
+                    population=population,
+                    moment=moment,
+                    point_estimate=round(float(boot[moment].mean()), 6),
+                    bootstrap_se=round(float(boot[moment].std(ddof=1)), 6),
+                )
+            )
+
+    cov_out = pd.concat(cov_frames, ignore_index=True)
+    cov_path = OUT_DIR / "qlfs_joint_stock_transition_covariance.csv"
+    cov_out.to_csv(cov_path, index=False)
+    print(f"\nWrote {cov_path} (population-keyed 5x5 covariance, both populations)")
+
+    summary_path = OUT_DIR / "qlfs_joint_stock_transition_summary.csv"
+    pd.DataFrame(summary_rows).to_csv(summary_path, index=False)
+    print(f"Wrote {summary_path}")
+
+
+if __name__ == "__main__":
+    main()

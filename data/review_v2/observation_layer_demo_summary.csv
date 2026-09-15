@@ -1,0 +1,10 @@
+quantity,share,n_stock,n_long_term
+long_term_share_candidate_k0,0.0,16625.0,0.0
+long_term_share_candidate_k1,0.0,16625.0,0.0
+long_term_share_candidate_k3,0.0,16625.0,0.0
+long_term_share_candidate_kinf,0.7159097744360903,16625.0,11902.0
+long_term_share_candidate_cumulative,0.43536842105263157,16625.0,7238.0
+long_term_share_canonical_months_jobless,0.7511578658724174,,
+transport_person_window_equal_person_PRIMARY,0.092960349687644,300.0,0.0
+transport_person_window_trip_weighted_SENSITIVITY,0.0925281786867276,300.0,0.0
+transport_budget_share_canonical_trip_mean,0.09306613133581974,,

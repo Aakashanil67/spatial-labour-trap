@@ -1,0 +1,11 @@
+population,moment,point_estimate,bootstrap_se
+all_ages,discouraged_share,0.134124,0.003127
+all_ages,employment_share,0.584823,0.003861
+all_ages,long_term_share,0.774469,0.005986
+all_ages,u_to_e_quarterly,0.084796,0.004424
+all_ages,e_to_non_e_quarterly,0.085889,0.003146
+15_64,discouraged_share,0.135317,0.003038
+15_64,employment_share,0.582043,0.003812
+15_64,long_term_share,0.774273,0.00584
+15_64,u_to_e_quarterly,0.085073,0.00442
+15_64,e_to_non_e_quarterly,0.085182,0.00306
