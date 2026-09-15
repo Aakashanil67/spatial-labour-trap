@@ -1,0 +1,42 @@
+{
+  "commands": [
+    "python -m scripts.feasibility_screen"
+  ],
+  "code_fingerprint_git_commit": "ce97697d1f15f128f6ba24a68a7a5d330de55006",
+  "dev_seeds": [
+    1,
+    2,
+    3
+  ],
+  "a_grid": [
+    0.002514642203001423,
+    0.0074,
+    0.02
+  ],
+  "kappa_grid": [
+    0.22393789239458572,
+    0.9,
+    2.0
+  ],
+  "n_steps": 3000,
+  "windows": {
+    "w1_51_150": [
+      51,
+      150
+    ],
+    "w2_1351_1500": [
+      1351,
+      1500
+    ],
+    "w3_2851_3000": [
+      2851,
+      3000
+    ]
+  },
+  "n_trajectories": 27,
+  "wall_clock_seconds": 199.70095470000524,
+  "n_jobs": 6,
+  "output_csv": "results\\review_v2\\settled_regime\\feasibility_screen_2026-09-15.csv",
+  "output_csv_sha256": "7f5d293823c1ba8b0b3b900028c198714e6f0c4c7d594bb4e8cf359ff35d5ed9",
+  "output_rows": 1134
+}
