@@ -446,6 +446,24 @@ class CityModel(Model):
         #    moments.py's transport_budget_share moment sums over the burn-in window --
         #    captured here, not recomputed later, because step_searching has already
         #    decremented search_capital by the time this line runs.
+        #
+        # F4 (2026-09-15, Astra's REVIEW_FOLLOWUP.md): step_searching() only runs on agents
+        # currently in `searching`, so an agent who is EMPLOYED or DISCOURAGED this step never
+        # has trips_this_step touched -- it silently retains whatever value it had the LAST
+        # time it actually searched. That is invisible to the canonical aggregates immediately
+        # below (both sum only over `searching`), but it makes trips_this_step/cost_per_trip
+        # a STALE, wrong signal for any consumer reading the per-agent trace (e.g.
+        # scripts/observation_layer.py's transport estimator), which then miscounts an
+        # employed or discouraged agent as a current traveller. Reset explicitly for every
+        # non-searching agent, here, before step_searching runs and overwrites the searching
+        # population's own value with this step's genuine decision. An agent hired THIS step
+        # (SEARCHING now, matched to EMPLOYED below) is unaffected: it is in `searching`, so
+        # its step_searching-decided trip stands, then survives matching unchanged, preserving
+        # a hire-month's genuine search trips per F4's explicit requirement. No RNG draw and no
+        # state transition happens here -- a plain field reset, not a behavioural change.
+        for agent in self._seekers():
+            if agent.state is not SeekerState.SEARCHING:
+                agent.trips_this_step = 0
         self._activate(searching, "step_searching")
         n_belief_inactive = sum(1 for a in searching if a.belief_inactive_this_step)
         total_trips = sum(a.trips_this_step for a in searching)

@@ -477,6 +477,66 @@ def test_jobless_clock_resets_only_on_hire():
     assert agent.months_jobless == 0
 
 
+def test_trips_this_step_is_reset_for_agents_who_stop_searching():
+    """F4 (2026-09-15, Astra's REVIEW_FOLLOWUP.md): trips_this_step must reflect only THIS
+    step's genuine decision. Before the fix, an agent who stopped being SEARCHING (employed
+    or discouraged) silently retained trips_this_step from the last step it actually
+    searched, since step_searching() -- the only place that sets the field -- never runs on
+    a non-searching agent."""
+    from src.agents import SeekerState
+
+    cfg = replace(BASE, n_steps=1, separation_rate=0.0)
+    model = CityModel(cfg)
+    probe = next(iter(model._seekers()))
+    probe.state = SeekerState.SEARCHING
+    probe.search_capital = 100.0  # affordable: decide_trips() should return > 0
+    model._traced_agents = [probe]
+
+    model.step()
+    row1 = model.trace_history[-1]
+    assert row1["trips_this_step"] > 0, "setup check: probe must search genuinely this step"
+
+    # An employed agent that stays employed (no separation): must read 0, not the stale
+    # positive value from the step above.
+    probe.state = SeekerState.EMPLOYED
+    model.step()
+    row2 = model.trace_history[-1]
+    assert row2["state"] == "EMPLOYED"
+    assert row2["trips_this_step"] == 0
+
+    # A discouraged agent (as capital exhaustion would produce): must also read 0. Capital
+    # kept below reentry_threshold so step_discouraged's own re-entry check does not flip it
+    # straight back to SEARCHING before trips_this_step could be observed as DISCOURAGED.
+    probe.state = SeekerState.DISCOURAGED
+    probe.search_capital = 0.0
+    model.step()
+    row3 = model.trace_history[-1]
+    assert row3["state"] == "DISCOURAGED"
+    assert row3["trips_this_step"] == 0
+
+
+def test_trips_taken_in_a_hire_month_are_preserved_in_the_trace():
+    """F4's explicit warning: filtering all post-matching EMPLOYED observations to zero would
+    introduce a DIFFERENT error. An agent who searches (genuine trips > 0) and is matched to
+    a job in the SAME step must show that step's real trip count in the post-matching trace,
+    not zero."""
+    from src.agents import SeekerState
+
+    cfg = replace(BASE, n_steps=1, separation_rate=0.0, n_vacancies=100)
+    model = CityModel(cfg)
+    for agent in model._seekers():
+        agent.state = SeekerState.EMPLOYED  # park everyone else so the probe is sure to be hired
+    probe = next(iter(model._seekers()))
+    probe.state = SeekerState.SEARCHING
+    probe.search_capital = 100.0
+    model._traced_agents = [probe]
+
+    model.step()
+    row = model.trace_history[-1]
+    assert row["state"] == "EMPLOYED", "setup check: abundant vacancies must hire the probe"
+    assert row["trips_this_step"] > 0, "a hire-month's genuine search trips must be preserved"
+
+
 def test_n_long_term_counts_jobless_duration_not_state_spell():
     """An agent 15 months jobless whose current searching spell is only 2 months old IS
     long-term unemployed on QLFS's definition. Before the fix, n_long_term read
