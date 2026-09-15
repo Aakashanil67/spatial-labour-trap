@@ -57,44 +57,51 @@ def episode_clock(categories: Sequence[str], k: int) -> list[int | None]:
     """The k-tolerant search-episode clock (observation_estimation_proposal.md Section 3).
     `categories`: a chronological E/U/D sequence for ONE agent (from classify_trace()).
 
-    Returns, for each step, the number of COMPLETED PRIOR consecutive-episode steps credited
-    AS OF that step's own (post-matching) observation -- the SAME "credited after
-    measurement" convention already used for `months_jobless` (a continuously non-employed
-    agent reads N-1 at its Nth consecutive non-employed observation; first classified
-    long-term, at the existing 12-month threshold, on its 13th such observation, not its
-    12th). None where category == 'E' (duration undefined while employed).
+    **CORRECTED 2026-09-15 (Astra's REVIEW_FOLLOWUP.md finding F1).** The prior version let a
+    D observation with no episode in progress OPEN a fresh episode (crediting that D month as
+    the episode's day 0), which is wrong: only a U observation can open or continue an
+    episode; a D observation can only be WITHIN an already-open episode (as a tolerated gap)
+    or outside any episode (undefined, None). The bug also mis-credited the length after a
+    tolerated gap: e.g. for `k=0`, `[U, D, U]` must read `[0, None, 0]` -- the returning U is
+    a NEW episode (0), not a continuation (the prior, buggy code returned `[0, 0, 1]`). And a
+    leading `D` with no prior U, e.g. `[D, U, U, ...]`, must read `[None, 0, 1, ...]`, not
+    `[0, 1, 2, ...]` -- confirmed against Astra's independent reference implementation and
+    `tests/test_observation_layer.py`'s corrected fixtures.
 
-    An episode is a maximal run of U/D steps within which no run of MORE than k consecutive D
-    steps occurs since the episode's last U step (or the episode's own start, if it opened on
-    a D step -- a hard-discouraged agent that resumes searching before exceeding tolerance is
-    one continuous episode, not two). k=0: any D step immediately following a U step, or any
-    second consecutive D step, exceeds tolerance and starts a fresh episode as of that step."""
+    Returns, for each step, the number of COMPLETED PRIOR steps of the CURRENT episode,
+    credited AS OF that step's own (post-matching) observation -- the SAME "credited after
+    measurement" convention already used for `months_jobless` (a continuously active agent
+    reads N-1 at its Nth consecutive U observation within one episode; first classified
+    long-term, at the existing 12-month threshold, on its 13th such observation, not its
+    12th). `None` where category == 'E' (employed) OR where the agent is a D observation with
+    no episode currently open (D alone does not create search history; see F1's explicit
+    requirement that D must not be given a credited duration it never earned by searching).
+
+    An episode is opened only by a U observation. Once open, it continues through a run of up
+    to `k` consecutive D observations since the last U; a D observation that would make the
+    gap exceed `k` closes the episode (reading None from then on, until the next U reopens a
+    fresh one at reading 0). `k=0`: any single D closes the episode immediately -- the next U
+    starts a brand-new episode at 0, not a continuation."""
     if k < 0:
         raise ValueError("k must be >= 0")
+    start: int | None = None  # step index the current episode opened at
+    last_u: int | None = None  # step index of the episode's most recent U observation
     out: list[int | None] = []
-    completed: int | None = None  # None: no episode in progress (last observation was E)
-    gap_run = 0  # consecutive D-steps since the episode's last U-step (or its start)
-    for cat in categories:
+    for t, cat in enumerate(categories):
         if cat not in CATEGORIES:
             raise ValueError(f"unrecognised category {cat!r}")
         if cat == "E":
-            completed = None
-            gap_run = 0
+            start = last_u = None
             out.append(None)
-            continue
-        if completed is None:
-            completed = 0
-            gap_run = 1 if cat == "D" else 0
-            out.append(0)
-            continue
-        gap_run = 0 if cat == "U" else gap_run + 1
-        if gap_run > k:
-            completed = 0
-            gap_run = 1  # this step is itself the D step that exceeded tolerance
-            out.append(0)
-            continue
-        completed += 1
-        out.append(completed)
+        elif cat == "U":
+            if start is None or t - last_u - 1 > k:
+                start = t  # no episode open, or the gap since last_u already exceeded k
+            last_u = t
+            out.append(t - start)
+        else:  # D
+            if start is not None and t - last_u > k:
+                start = last_u = None  # this D itself pushes the gap past tolerance
+            out.append(None if start is None else t - start)
     return out
 
 
@@ -138,24 +145,84 @@ def long_term_candidate_share(
     categories_by_agent_step: Iterable[str],
     threshold_months: int = 12,
 ) -> dict:
-    """Candidate long_term_share: share of (agent, step) observations classified U or D
-    (the searching/discouraged stock -- the model-side analogue of QLFS's currently-unemployed
-    universe under the approved mapping) whose duration clock reading is >= threshold_months.
+    """POOLED (agent-month) U-ONLY long_term_share candidate diagnostic.
+
+    **CORRECTED 2026-09-15 (Astra's REVIEW_FOLLOWUP.md finding F2).** The prior version
+    pooled U and D together in the denominator (and could count a D observation as
+    "long-term" in the numerator), which does not match the empirical target: the QLFS
+    `Long_term_unempl` target's eligible universe is `Status`=2 (Unemployed -- this project's
+    U) ONLY, confirmed live against the 2026-Q1 extract (all 7,502 age-15-64,
+    `Long_term_unempl`-eligible records have `Status`=2; none are Discouraged). Pooling U+D
+    is a DIFFERENT, expanded non-employment statistic -- if useful, it needs its own name and
+    must not be described as this QLFS target. Counterexample that motivated the fix: one U
+    observation with duration 12 and one D observation with duration 0 must read 1.0 (the
+    U-only share), not the prior code's 0.5.
+
+    A D-only observation set (no U observations at all, `n_stock == 0`) has an UNDEFINED
+    U-conditional share -- returned as `share=None`, not zero, mirroring
+    `transport_person_window_estimate()`'s empty-traveller-month treatment.
+
+    This is the POOLED (agent-month) variant -- see `long_term_candidate_share_monthly()`
+    for the PRIMARY equal-month-average cross-sectional comparator, since the canonical
+    `months_jobless`-based comparator is itself constructed as a mean of per-step ratios, not
+    one ratio pooled across the whole window; the two aggregation conventions can disagree
+    when the size of the U population varies across months.
+
     `duration_by_agent_step`/`categories_by_agent_step` must be the same length and in
-    step-with-step correspondence (e.g. one call's output each from episode_clock()/
-    cumulative_active_months() and classify_trace(), concatenated across agents)."""
+    step-with-step correspondence (e.g. one call's output each from `episode_clock()`/
+    `cumulative_active_months()` and `classify_trace()`, concatenated across agents)."""
     durations = list(duration_by_agent_step)
     cats = list(categories_by_agent_step)
     if len(durations) != len(cats):
         raise ValueError("duration and category sequences must have equal length")
-    stock = [(d, c) for d, c in zip(durations, cats, strict=True) if c in ("U", "D")]
+    stock = [d for d, c in zip(durations, cats, strict=True) if c == "U"]
     if not stock:
         return dict(share=None, n_stock=0, n_long_term=0)
-    n_long_term = sum(1 for d, _ in stock if d is not None and d >= threshold_months)
+    n_long_term = sum(1 for d in stock if d is not None and d >= threshold_months)
     return dict(
         share=n_long_term / len(stock),
         n_stock=len(stock),
         n_long_term=n_long_term,
+    )
+
+
+def long_term_candidate_share_monthly(
+    rows: Sequence[dict],
+    window_steps: Iterable[int],
+    threshold_months: int = 12,
+) -> dict:
+    """PRIMARY cross-sectional long_term_share candidate: the equal-month average of the
+    U-conditional long-term share (added 2026-09-15, Astra's REVIEW_FOLLOWUP.md finding F2).
+    Matches the canonical `months_jobless`-based comparator's own construction (mean of each
+    step's `n_long_term/u`, not one ratio pooled across agent-months --
+    `scripts/demo_observation_layer_run.py`'s `long_term_share_canonical_months_jobless`).
+
+    `rows`: one dict per (agent, step) observation, each needing 'step', 'duration',
+    'category' (U-only rows matter; D/E rows are ignored here, matching
+    `long_term_candidate_share()`'s U-only population). `window_steps`: every step in the
+    measurement window, including steps with zero U observations -- required to detect and
+    exclude those months explicitly (undefined, not zero), the same convention as
+    `transport_person_window_estimate()`'s empty-traveller-month handling."""
+    by_step: dict[int, list[int | None]] = {s: [] for s in window_steps}
+    for r in rows:
+        if r["category"] == "U" and r["step"] in by_step:
+            by_step[r["step"]].append(r["duration"])
+
+    month_shares: list[float] = []
+    n_empty = 0
+    for durations in by_step.values():
+        if not durations:
+            n_empty += 1
+            continue
+        n_long = sum(1 for d in durations if d is not None and d >= threshold_months)
+        month_shares.append(n_long / len(durations))
+
+    if not month_shares:
+        return dict(share=None, n_months_used=0, n_months_empty=n_empty)
+    return dict(
+        share=sum(month_shares) / len(month_shares),
+        n_months_used=len(month_shares),
+        n_months_empty=n_empty,
     )
 
 
@@ -226,3 +293,129 @@ def transport_person_window_estimate(
         n_months_used=len(month_values),
         n_months_empty=n_empty,
     )
+
+
+# --- Streaming collector (added 2026-09-15, F6.6: results/review_v2/settled_regime/ -------
+# --- validation_manifest_2026-09-15.md's storage/memory repair) ---------------------------
+
+
+class StreamingEpisodeClockState:
+    """O(1)-memory-per-agent streaming equivalent of episode_clock(): processes ONE
+    observation at a time via observe() and returns the SAME value episode_clock() would
+    give at that position, without ever storing the agent's full category history. Validated
+    against episode_clock() directly in tests/test_observation_layer.py
+    (TestStreamingEpisodeClockState) -- the exact "streaming state validated against full
+    traces on a small fixture" the manifest repair requires before trusting it for a resource
+    estimate."""
+
+    __slots__ = ("k", "start", "last_u", "_t")
+
+    def __init__(self, k: int):
+        if k < 0:
+            raise ValueError("k must be >= 0")
+        self.k = k
+        self.start: int | None = None
+        self.last_u: int | None = None
+        self._t = -1
+
+    def observe(self, category: str) -> int | None:
+        if category not in CATEGORIES:
+            raise ValueError(f"unrecognised category {category!r}")
+        self._t += 1
+        t = self._t
+        if category == "E":
+            self.start = self.last_u = None
+            return None
+        if category == "U":
+            if self.start is None or t - self.last_u - 1 > self.k:
+                self.start = t
+            self.last_u = t
+            return t - self.start
+        # D
+        if self.start is not None and t - self.last_u > self.k:
+            self.start = self.last_u = None
+        return None if self.start is None else t - self.start
+
+
+class StreamingMonthlySummary:
+    """Per-step SUFFICIENT SUMMARY for long_term_candidate_share_monthly(), accumulated one
+    (agent, step) observation at a time without retaining the underlying per-agent rows: only
+    a running (n_U, n_long_term_U) counter PER STEP is kept, not one row per agent per step.
+    Memory scales with the number of measurement-window STEPS, not steps x agents -- the
+    change `validation_manifest_2026-09-15.md` F6.6 asks for in place of holding a full
+    per-agent trace for the whole window."""
+
+    def __init__(self, threshold_months: int = 12):
+        self.threshold_months = threshold_months
+        self._n_u: dict[int, int] = defaultdict(int)
+        self._n_long: dict[int, int] = defaultdict(int)
+
+    def observe(self, step: int, category: str, duration: int | None) -> None:
+        if category != "U":
+            return
+        self._n_u[step] += 1
+        if duration is not None and duration >= self.threshold_months:
+            self._n_long[step] += 1
+
+    def result(self, window_steps: Iterable[int]) -> dict:
+        month_shares = []
+        n_empty = 0
+        for step in window_steps:
+            n_u = self._n_u.get(step, 0)
+            if n_u == 0:
+                n_empty += 1
+                continue
+            month_shares.append(self._n_long.get(step, 0) / n_u)
+        if not month_shares:
+            return dict(share=None, n_months_used=0, n_months_empty=n_empty)
+        return dict(
+            share=sum(month_shares) / len(month_shares),
+            n_months_used=len(month_shares),
+            n_months_empty=n_empty,
+        )
+
+
+class StreamingTransportSummary:
+    """Per-step SUFFICIENT SUMMARY for transport_person_window_estimate(): running
+    (sum of per-agent spend/trip ratios, traveller count) PER STEP, not one row per
+    (agent, step). Supports the 'equal_person' weighting exactly; 'trip_weighted' needs only
+    total spend and total trips per step, also accumulated here so both weightings can be
+    recovered from the same O(steps)-sized summary."""
+
+    def __init__(self):
+        self._sum_person_ratio: dict[int, float] = defaultdict(float)
+        self._n_travellers: dict[int, int] = defaultdict(int)
+        self._sum_spend: dict[int, float] = defaultdict(float)
+        self._sum_trips: dict[int, int] = defaultdict(int)
+
+    def observe(self, step: int, spend: float, trips: int) -> None:
+        if trips < 1:
+            raise ValueError(f"observe() is for travellers only (trips>=1); got trips={trips!r}")
+        self._sum_person_ratio[step] += spend / trips
+        self._n_travellers[step] += 1
+        self._sum_spend[step] += spend
+        self._sum_trips[step] += trips
+
+    def result(self, window_steps: Iterable[int], weighting: str = "equal_person") -> dict:
+        if weighting not in ("equal_person", "trip_weighted"):
+            raise ValueError(
+                f"weighting must be 'equal_person' or 'trip_weighted', got {weighting!r}"
+            )
+        month_values = []
+        n_empty = 0
+        for step in window_steps:
+            n = self._n_travellers.get(step, 0)
+            if n == 0:
+                n_empty += 1
+                continue
+            if weighting == "equal_person":
+                month_values.append(self._sum_person_ratio[step] / n)
+            else:
+                month_values.append(self._sum_spend[step] / self._sum_trips[step])
+        if not month_values:
+            return dict(estimate=None, n_months_used=0, n_months_empty=n_empty)
+        return dict(
+            estimate=sum(month_values) / len(month_values),
+            n_months_used=len(month_values),
+            n_months_empty=n_empty,
+        )
