@@ -101,18 +101,24 @@ underlying per-trip costs of R10/R30 unless trip counts happen to be equal -- th
 the same fixture already in `DECISIONS_PENDING.md` Question 4, restated here to show
 it applies regardless of the (corrected) weekly vs. daily reference-period question.
 
-**The weekly-to-monthly model approximation, stated explicitly rather than assumed
-away.** The model's search-cost accounting is monthly (agents take some number of
-trips per model month). Connecting a week-conditioned survey screen to that requires
-an explicit assumption about how many of an agent's monthly trips correspond to what
-NHTS could have recorded in a comparable week -- this is NOT resolved by matching
-units (rand per trip on both sides) or by the person-mean/trip-mean choice alone. The
-existing frequency-sensitivity grid (`transport_candidate_frequency_sensitivity_15_64.csv`)
-already varies an assumed "search days/week" parameter and shows the point estimate
-moves by ~5.5% across a 1-7 days/week range; that IS the required weekly-to-monthly
-approximation, made explicit, not a separate untouched problem. What remains open is
-which single frequency value (if any) is adopted as primary, which is unchanged from
-the existing open item above.
+**The weekly-to-monthly model approximation -- CORRECTED 2026-09-15 (Astra
+`REVIEW_FOLLOWUP.md`): the frequency-sensitivity grid does NOT already solve this; the
+2026-09-14 text above conflated two different operations and is withdrawn.** The
+"search days/week" grid (`transport_candidate_frequency_sensitivity_15_64.csv`) is a
+**fare-conversion** operation: it allocates a weekly/monthly PAYMENT figure over an
+assumed number of journeys to get a cost per journey. That is a different problem from
+**observation selection**: deciding which of the model's monthly-traveller agents
+should be treated as playing the role of "a person NHTS's weekly screen would have
+caught and recorded." Changing the fare divisor does not specify which agents qualify
+as weekly travellers, and this problem exists even if every NHTS fare were already
+reported per single trip with no conversion needed at all -- frequent and infrequent
+travellers have different probabilities of appearing in a one-week screen despite both
+travelling during the same model month, and nothing in the frequency grid addresses
+that. See `observation_estimation_proposal.md` (added this pass) for the actual
+observation-selection proposal: monthly-traveller participation is used as an explicit,
+disclosed approximation to weekly-traveller participation, with a bounded sensitivity
+between equal per-traveller weighting and trip-frequency-weighted participation,
+rather than treating the fare-conversion grid as if it already resolved this.
 
 **Not changed by this correction**: no code in `src/moments.py` is modified here (the
 averaging-convention fix remains a G5-gated, undecided change per
