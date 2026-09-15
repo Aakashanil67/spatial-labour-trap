@@ -195,11 +195,14 @@ class JobSeeker(Agent):
         """Exogenous separation (M1). Without this, employment is absorbing: u -> 0 and the
         matching function has no (u, v, m) variation left to fit.
 
-        Draws from model.separation_random, not self.random (model.random): self.random is
-        also consumed by activation shuffling and the ticket/firm-order shuffles in model.py,
-        whose draw counts depend on this run's own employment level -- exactly the shared-stream
-        problem the shock stream was split out of. See model.py's CityModel.__init__ docstring."""
-        if self.model.separation_random.random() < self.model.config.separation_rate:
+        Draws from model.paired_separation_draw(self.unique_id), not self.random (also
+        consumed by activation shuffling and the ticket/firm-order shuffles, whose draw
+        counts depend on this run's own employment level) and not a sequential dedicated
+        stream either (2026-09-15: a sequential stream isolates the separation hazard from
+        other draws but does not guarantee agent #k gets the same potential draw in the same
+        month across two policy arms whose employment levels have diverged -- see
+        model.py's CityModel.__init__ docstring)."""
+        if self.model.paired_separation_draw(self.unique_id) < self.model.config.separation_rate:
             self.state = SeekerState.SEARCHING
             self.months_in_state = 0
 

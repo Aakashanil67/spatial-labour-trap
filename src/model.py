@@ -26,7 +26,6 @@ JobSeeker and Firm instances once firms exist, so every seeker-only query below 
 from __future__ import annotations
 
 import math
-import random as stdlib_random
 
 import numpy as np
 import pandas as pd
@@ -83,7 +82,24 @@ class CityModel(Model):
         # self.rng/self.random without introducing a second seed field on Config.
         _shock_seed, _separation_seed = np.random.SeedSequence(config.seed).spawn(2)
         self._shock_rng = np.random.default_rng(_shock_seed)
-        self.separation_random = stdlib_random.Random(int(_separation_seed.generate_state(1)[0]))
+
+        # Agent/month pairing (2026-09-15, Aakash's instruction following Astra's
+        # COMPLETION_REVIEW.md item 6): the separation draw used to be a SEQUENTIAL stdlib
+        # Random stream, consumed once per employed agent in activation order each step. That
+        # stream separation (isolating it from self.rng/self.random, above) is necessary but
+        # not sufficient for policy-arm comparability -- a sequential stream still hands out
+        # its Nth draw to whichever agent happens to be the Nth one checked that step, and two
+        # policy arms whose employment levels (and therefore activation order and count of
+        # employed agents) have already diverged will NOT give the same agent the same
+        # potential draw in the same month, even with an identical separation_seed. Fixed by
+        # keying each draw to (separation-seed component, agent, month) directly via
+        # paired_separation_draw() below, instead of drawing sequentially. This is a genuine
+        # behaviour change to realised trajectories under a fixed seed (the draw VALUES an
+        # agent receives are computed differently), not a change to the separation hazard's
+        # statistical properties -- same reasoning as the D1 shock-stream fix. Frozen here,
+        # ahead of any final calibration or policy-comparison run, per instruction; not
+        # revisited once any such run begins.
+        self._separation_seed_component = int(_separation_seed.generate_state(1)[0])
 
         # AR(1) aggregate productivity shock (M2). log A_t = rho_A * log A_{t-1} + eps. Starts
         # at the deterministic steady state A_0 = 1. With the MVM defaults (rho_A = sigma_A =
@@ -128,6 +144,34 @@ class CityModel(Model):
             )
         traced_ids = set(config.trace_agent_ids)
         self._traced_agents = [a for a in self._seekers() if a.unique_id in traced_ids]
+
+        # Agent/month-paired separation draws (2026-09-15, performance): a per-call
+        # SHA-256+Random() construction benchmarked at ~15us/call vs ~0.3us for the old
+        # sequential stream -- a 50x cost that materially slowed thesis-scale runs (500
+        # agents x thousands of steps, most agents employed most steps) and the test suite
+        # (630s vs. the usual ~200-300s for the fast suite). Replaced with a grid grown ONE
+        # MONTH-COLUMN AT A TIME from a persistent Generator, looked up in O(1) per call.
+        # Grown lazily rather than pre-sized to config.n_steps: some tests call .step()
+        # directly more times than n_steps (n_steps only bounds CityModel.run()'s own loop,
+        # not .step() itself), so a fixed pre-sized grid can run out of columns. Growing
+        # exactly one column per NEW month, in increasing order, keeps every (agent, month)
+        # value identical regardless of how many months are ultimately requested or in what
+        # batch sizes -- growing by more than one column per call would NOT have this
+        # property, since numpy fills a multi-column draw row-major (interleaved across
+        # agents within a call), which depends on how many columns were asked for at once.
+        # `unique_id` is NOT a 0-based index (Firms are created first and claim the lowest
+        # ids -- see `_create_firms()` above), so a unique_id -> row lookup is built
+        # explicitly rather than assumed contiguous from 0.
+        seeker_ids = [a.unique_id for a in self._seekers()]
+        self._separation_draw_row = {uid: i for i, uid in enumerate(seeker_ids)}
+        self._separation_rng = np.random.default_rng(self._separation_seed_component)
+        # Preallocated with amortised (doubling) growth via _grow_separation_draws() below --
+        # a plain per-step np.concatenate would be O(n_steps) work on EVERY step (O(n_steps^2)
+        # total over a run). `_filled` tracks how many columns hold real (already-drawn)
+        # values; columns beyond it in `_separation_draws` are uninitialised buffer space.
+        initial_capacity = max(config.n_steps + 1, 16)
+        self._separation_draws = np.empty((len(seeker_ids), initial_capacity))
+        self._separation_draws_filled = 0
 
     # -- Agent-set filtering ---------------------------------------------------------------
 
@@ -260,6 +304,42 @@ class CityModel(Model):
             y = self.cbd_y + radius * math.sin(angle)
             firms.append(Firm(self, x=x, y=y, initial_vacancies=initial_each))
         return firms
+
+    def paired_separation_draw(self, agent_unique_id: int) -> float:
+        """Agent/month-paired separation draw. Looked up from `self._separation_draws`, a
+        grid grown lazily (see __init__'s docstring on why one column at a time) and indexed
+        by (agent row, THIS month/self.steps) -- independent of activation order, and
+        independent of which or how many agents are actually employed (and therefore actually
+        checked against this draw) this step. Two policy arms sharing config.seed give agent
+        k in month t the SAME potential separation draw whether or not agent k is employed in
+        either arm, which a sequential stream cannot guarantee once the arms' employment
+        levels diverge (see __init__'s docstring). Raises KeyError for a unique_id that is not
+        one of this model's own JobSeekers (e.g. a Firm) -- a genuine caller error, matching
+        this project's convention of not adding defensive handling for inputs that cannot
+        occur in normal use."""
+        if self._separation_draws_filled <= self.steps:
+            self._grow_separation_draws(self.steps)
+        row = self._separation_draw_row[agent_unique_id]
+        return float(self._separation_draws[row, self.steps])
+
+    def _grow_separation_draws(self, up_to_month: int) -> None:
+        """Fills columns [_filled, up_to_month] of `_separation_draws`, one month-column per
+        `.random()` call and strictly in increasing order (the property that makes each
+        (agent, month) value independent of how many months are ultimately requested -- see
+        __init__'s docstring), doubling the underlying buffer's capacity first if needed
+        (amortised O(1) per column over a run, instead of reallocating every single step)."""
+        n_rows = len(self._separation_draw_row)
+        needed = up_to_month + 1
+        if needed > self._separation_draws.shape[1]:
+            new_capacity = max(needed, self._separation_draws.shape[1] * 2)
+            grown = np.empty((n_rows, new_capacity))
+            grown[:, : self._separation_draws_filled] = self._separation_draws[
+                :, : self._separation_draws_filled
+            ]
+            self._separation_draws = grown
+        for month in range(self._separation_draws_filled, needed):
+            self._separation_draws[:, month] = self._separation_rng.random(n_rows)
+        self._separation_draws_filled = needed
 
     def _update_productivity_shock(self) -> None:
         cfg = self.config
@@ -425,6 +505,15 @@ class CityModel(Model):
                         "months_in_state": agent.months_in_state,
                         "trips_this_step": agent.trips_this_step,
                         "distance_to_cbd": agent.distance_to_cbd,
+                        # Added 2026-09-15 for scripts/observation_layer.py's E/U/D mapping
+                        # and transport estimator: belief_inactive_this_step distinguishes
+                        # the two SEARCHING sub-populations (U vs. D under the new mapping);
+                        # months_jobless is the existing calendar-accounting-fixed clock,
+                        # carried through so the new duration clocks can be checked against
+                        # it directly. Neither changes trace_history's existing fields or
+                        # self.history (the calibration-input aggregate stream) at all.
+                        "belief_inactive_this_step": agent.belief_inactive_this_step,
+                        "months_jobless": agent.months_jobless,
                     }
                 )
 

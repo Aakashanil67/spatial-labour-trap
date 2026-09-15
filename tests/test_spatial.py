@@ -5,7 +5,6 @@ should make the spatial/firm code paths inert.
 
 from __future__ import annotations
 
-import random as stdlib_random
 from dataclasses import replace
 
 import pytest
@@ -424,15 +423,101 @@ def test_productivity_shock_differs_from_a_different_seed():
     assert a["productivity_shock"].tolist() != b["productivity_shock"].tolist()
 
 
-def test_separation_random_is_isolated_from_model_random():
-    """The separation hazard (agents.py step_employed) now draws from model.separation_random,
-    a dedicated stdlib Random instance seeded from config.seed alone, not model.random (which
-    activation shuffling and the ticket/firm-order shuffles also consume, and whose draw count
-    depends on this run's own trip/matching behaviour). Confirms two configs sharing a seed but
-    differing in a behaviour-affecting parameter get an identical separation stream -- unlike
-    model.random, whose later draws already diverge between such configs mid-run."""
+def test_paired_separation_draw_is_isolated_from_model_random():
+    """The separation hazard (agents.py step_employed) draws from
+    model.paired_separation_draw(), not model.random (which activation shuffling and the
+    ticket/firm-order shuffles also consume, and whose draw count depends on this run's own
+    trip/matching behaviour). Confirms two configs sharing a seed but differing in a
+    behaviour-affecting parameter get an identical separation draw for the same agent in the
+    same month -- unlike model.random, whose later draws already diverge between such
+    configs mid-run."""
     a = CityModel(SHOCK_BASE)
     b = CityModel(TREATED)
-    assert a.separation_random is not a.random
-    assert isinstance(a.separation_random, stdlib_random.Random)
-    assert a.separation_random.random() == b.separation_random.random()
+    id_a = next(iter(a._seekers())).unique_id
+    assert a.paired_separation_draw(id_a) == b.paired_separation_draw(id_a)
+
+
+# Agent/month pairing (2026-09-15, Aakash's instruction following Astra's
+# COMPLETION_REVIEW.md item 6): a SEQUENTIAL separation stream (the prior
+# self.separation_random) isolates the separation hazard from other draws but does not
+# guarantee agent #k gets the SAME potential draw in the SAME month across two policy arms
+# whose employment levels -- and therefore activation order and which agents are even
+# checked -- have diverged. paired_separation_draw() is keyed by (separation-seed
+# component, agent, month) directly, with no dependence on activation order or count.
+#
+# Note: JobSeeker unique_ids are NOT a 0-based contiguous range -- Firms are created first
+# and claim the lowest ids (see CityModel.__init__'s docstring on _separation_draw_row) --
+# so every test below fetches real seeker ids from a constructed model rather than assuming
+# small integers like 0/1/5 are valid.
+
+
+def test_paired_separation_draw_is_independent_of_which_agents_are_currently_employed():
+    """The defining guarantee: one specific agent's month-3 draw is identical whether or not
+    that agent (or any other) is the one actually checked that step -- i.e. the function
+    itself never consults model state (employment counts, activation order), only its two
+    key inputs (agent, month), both looked up from a grid precomputed at construction.
+    Constructed directly, without running two full diverging simulations, since the function
+    is a pure key->draw map by design."""
+    model = CityModel(SHOCK_BASE)
+    model.steps = 3
+    agent_id = next(iter(model._seekers())).unique_id
+    draw_a = model.paired_separation_draw(agent_id)
+    # Advance the model's OWN random/rng streams substantially (as a diverged policy arm
+    # would have, by this point) -- paired_separation_draw must be unaffected, since it reads
+    # only the precomputed grid and self.steps, neither touched by this.
+    for _ in range(500):
+        model.random.random()
+        model.rng.random()
+    draw_b = model.paired_separation_draw(agent_id)
+    assert draw_a == draw_b
+
+
+def test_paired_separation_draw_varies_by_agent_and_by_month():
+    model = CityModel(SHOCK_BASE)
+    seeker_ids = sorted(a.unique_id for a in model._seekers())
+    id_0, id_1 = seeker_ids[0], seeker_ids[1]
+    model.steps = 1
+    draw_agent_0 = model.paired_separation_draw(id_0)
+    draw_agent_1 = model.paired_separation_draw(id_1)
+    assert draw_agent_0 != draw_agent_1  # different agents, same month -> different draws
+    model.steps = 2
+    draw_agent_0_month_2 = model.paired_separation_draw(id_0)
+    assert draw_agent_0 != draw_agent_0_month_2  # same agent, different month -> different draw
+
+
+def test_paired_separation_draw_is_reproducible_under_a_fixed_seed():
+    a = CityModel(SHOCK_BASE)
+    b = CityModel(SHOCK_BASE)
+    agent_id = sorted(x.unique_id for x in a._seekers())[10]
+    a.steps = 42
+    b.steps = 42
+    assert a.paired_separation_draw(agent_id) == b.paired_separation_draw(agent_id)
+
+
+def test_paired_separation_draw_differs_across_seeds():
+    other_seed = replace(SHOCK_BASE, seed=SHOCK_BASE.seed + 1)
+    a = CityModel(SHOCK_BASE)
+    b = CityModel(other_seed)
+    agent_id = next(iter(a._seekers())).unique_id
+    a.steps = 1
+    b.steps = 1
+    assert a.paired_separation_draw(agent_id) != b.paired_separation_draw(agent_id)
+
+
+def test_paired_separation_draw_returns_a_uniform_unit_interval_value():
+    model = CityModel(SHOCK_BASE)
+    seeker_ids = [a.unique_id for a in model._seekers()][:200]
+    draws = [model.paired_separation_draw(i) for i in seeker_ids]
+    assert all(0.0 <= d < 1.0 for d in draws)
+    # Coarse sanity check on spread, not a rigorous uniformity test: with 200 draws, expect
+    # values across a wide range of the unit interval, not clustered in a narrow band.
+    assert max(draws) - min(draws) > 0.8
+
+
+def test_paired_separation_draw_rejects_an_id_that_is_not_a_seeker():
+    """A Firm's unique_id (or any id outside this model's own JobSeekers) is a genuine
+    caller error, not a case to handle silently."""
+    model = CityModel(SHOCK_BASE)
+    firm_id = model.firms[0].unique_id
+    with pytest.raises(KeyError):
+        model.paired_separation_draw(firm_id)
