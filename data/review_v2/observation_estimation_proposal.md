@@ -1,5 +1,14 @@
 # One coherent observation and estimation proposal
 
+**AMENDED 2026-09-15: see `approved_specification_2026-09-15.md` for the APPROVED
+specification -- Astra's `COMPLETION_REVIEW.md` found contradictions in this document's
+Section 3 (no named primary clock), Section 5 (fare-anchor equation contradicted itself), and
+Section 7 (`initial_search_capital` role contradicted the recorded G1 decision), each now
+resolved. This document's Sections 1, 2, 4 (formula/mapping substance) and 6 remain valid and
+are carried forward; Sections 3, 5 and 7 below are SUPERSEDED by the approved document and
+kept here only for their still-useful supporting evidence/reasoning, not as the current
+specification.**
+
 15 September 2026. Written in response to Astra's `REVIEW_FOLLOWUP.md` deliverable 1.
 **These are recommendations for Aakash's approval, not adopted decisions.** No canonical
 target in `data/moments.csv` or `configs/baseline.yaml` is changed by this document, and no
