@@ -28,6 +28,7 @@ from scripts.observation_layer import (
     cumulative_active_months,
     episode_clock,
     long_term_candidate_share,
+    long_term_candidate_share_monthly,
     transport_person_window_estimate,
 )
 from src.agents import WAGE
@@ -74,31 +75,65 @@ def main() -> None:
     cfg = build_config()
     model = CityModel(cfg)
     model.run()
-    trace = pd.DataFrame(model.trace_history)
-    trace = trace[trace["step"].isin(MEASUREMENT_WINDOW)]
-    print(f"Trace rows in measurement window: {len(trace)} ({trace['unique_id'].nunique()} agents)")
+    full_trace = pd.DataFrame(model.trace_history)
+    window = set(MEASUREMENT_WINDOW)
+    print(
+        f"Full trace rows: {len(full_trace)} ({full_trace['unique_id'].nunique()} agents); "
+        f"{full_trace['step'].isin(window).sum()} rows fall inside the measurement window"
+    )
 
     # --- Duration-clock candidates -----------------------------------------------------
-    all_durations: dict[str, list] = {"k0": [], "k1": [], "k3": [], "kinf": [], "cumulative": []}
-    all_categories: list[str] = []
-    for _uid, g in trace.sort_values("step").groupby("unique_id"):
+    # F3 (2026-09-15, Astra's REVIEW_FOLLOWUP.md): clocks MUST be computed from each agent's
+    # COMPLETE observed history, in step order, before any window selection -- slicing the
+    # trace to the measurement window first and then computing clocks on the truncated series
+    # silently resets any episode already in progress at the window's start (e.g. 20
+    # uninterrupted active months reads 19 from the full history, but only 4 from the last 5
+    # steps alone). The window controls which OBSERVATIONS get averaged into the reported
+    # share; it must never reset the economic history the clock is measuring.
+    window_rows: list[dict] = []  # one dict per (agent, step) inside the window, all clocks
+    for _uid, g in full_trace.sort_values("step").groupby("unique_id"):
+        g = g.reset_index(drop=True)
         cats = classify_trace(g.to_dict("records"))
-        all_categories.extend(cats)
-        all_durations["k0"].extend(episode_clock(cats, k=0))
-        all_durations["k1"].extend(episode_clock(cats, k=1))
-        all_durations["k3"].extend(episode_clock(cats, k=3))
-        all_durations["kinf"].extend(episode_clock(cats, k=10**9))
-        all_durations["cumulative"].extend(cumulative_active_months(cats))
+        steps = g["step"].tolist()
+        clocks = {
+            "k0": episode_clock(cats, k=0),
+            "k1": episode_clock(cats, k=1),
+            "k3": episode_clock(cats, k=3),
+            "kinf": episode_clock(cats, k=10**9),
+            "cumulative": cumulative_active_months(cats),
+        }
+        for i, step in enumerate(steps):
+            if step not in window:
+                continue
+            for label, series in clocks.items():
+                window_rows.append(
+                    dict(step=step, clock=label, category=cats[i], duration=series[i])
+                )
 
     summary_rows = []
-    for label, durations in all_durations.items():
-        result = long_term_candidate_share(durations, all_categories, threshold_months=12)
-        summary_rows.append(dict(quantity=f"long_term_share_candidate_{label}", **result))
-        print(f"long_term_share candidate ({label}): {result}")
+    for label in ("k0", "k1", "k3", "kinf", "cumulative"):
+        rows = [r for r in window_rows if r["clock"] == label]
+        pooled = long_term_candidate_share(
+            [r["duration"] for r in rows], [r["category"] for r in rows], threshold_months=12
+        )
+        monthly = long_term_candidate_share_monthly(
+            rows, window_steps=MEASUREMENT_WINDOW, threshold_months=12
+        )
+        summary_rows.append(
+            dict(quantity=f"long_term_share_candidate_{label}_pooled_U_only", **pooled)
+        )
+        summary_rows.append(
+            dict(quantity=f"long_term_share_candidate_{label}_monthly_PRIMARY", **monthly)
+        )
+        print(f"long_term_share candidate ({label}) pooled U-only: {pooled}")
+        print(f"long_term_share candidate ({label}) equal-month PRIMARY: {monthly}")
 
     # Also report the model's CURRENT canonical long_term_share (months_jobless-based, D11
     # pre-matching stock convention) over the same window, from self.history, for comparison
-    # -- NOT recomputed here, read directly from the already-collected aggregate series.
+    # -- NOT recomputed here, read directly from the already-collected aggregate series. This
+    # comparator is itself an equal-month average of each step's n_long_term/u ratio, matching
+    # long_term_candidate_share_monthly()'s own construction (not the pooled variant) -- see
+    # F2's explicit requirement to compare like with like.
     history = pd.DataFrame(model.history)
     hist_window = history[history["step"].isin(MEASUREMENT_WINDOW)]
     canonical_lts = (hist_window["n_long_term"] / hist_window["u"].replace(0, pd.NA)).mean()
@@ -113,9 +148,15 @@ def main() -> None:
     print(f"long_term_share canonical (months_jobless, D11 stock convention): {canonical_lts}")
 
     # --- Transport estimator candidates -------------------------------------------------
+    # F4 (2026-09-15): trips_this_step is now genuinely reset for non-searching agents at the
+    # source (src/model.py's step()), so trace.trips_this_step>=1 correctly identifies THIS
+    # step's real travellers -- no separate instrumentation needed here any more. Windowing
+    # the transport trace (unlike the duration clocks) is safe either before or after, since
+    # trips_this_step/distance_to_cbd are per-step values with no cross-step running state.
     daily_wage = WAGE / DAYS_PER_MONTH
+    wtrace = full_trace[full_trace["step"].isin(window)]
     traveller_records = []
-    for row in trace.itertuples():
+    for row in wtrace.itertuples():
         if row.trips_this_step >= 1:
             cost_per_trip = cfg.search_cost_per_trip + cfg.transport_cost_rate * row.distance_to_cbd
             traveller_records.append(
