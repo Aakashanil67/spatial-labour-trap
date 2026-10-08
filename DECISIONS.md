@@ -2250,3 +2250,17 @@ Only an independently constructed reference distinguishes them.
 This is the calendar-accounting change only. What the clock should *measure* -- elapsed months
 since last work, or time within a search episode that a pause may or may not break -- is a
 separate, still-open question; see "`Long_term_unempl`'s derivation" above.
+
+## 8 October 2026: the thesis moves to a much smaller model
+
+My supervisor's view was that this model is master's-level in scope: a 2D city, endogenous
+vacancy posting, depletable search capital and a four-moment calibration whose runs took four
+to five hours each. It was too much to finish and defend in a 6,000-word Honours thesis. The
+thesis now uses a separate model in `honours_simple/`, built from scratch on the
+`honours-simple-model` branch. Workers differ only in their distance from jobs, which sets the
+cost of each application against a fixed per-period allowance, and they compete for a fixed
+number of jobs through random matching rounds. It has no geography, no savings and no
+calibration.
+
+Nothing above this entry is deleted or rewritten, and `src/` is untouched. The locked
+commitments at the top of this file applied to the old model and do not bind the new one.
