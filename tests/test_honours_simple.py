@@ -50,6 +50,14 @@ def test_cheaper_search_gives_limits_3_2_1():
     np.testing.assert_array_equal(limits, np.repeat([3, 2, 1], 100))
 
 
+def test_allowance_of_4_gives_limits_3_1_1_and_3_3_2_at_half_cost():
+    # the far group can afford one application at normal cost once the allowance exceeds 3.6
+    normal = application_limits(Params(allowance=4.0))
+    half = application_limits(Params(allowance=4.0, cost_multiplier=0.5))
+    np.testing.assert_array_equal(normal, np.repeat([3, 1, 1], 100))
+    np.testing.assert_array_equal(half, np.repeat([3, 3, 2], 100))
+
+
 def test_limit_at_exact_budget_boundary_is_not_rounded_down():
     # 1.5 per application against an allowance of 3.0: exactly two fit.
     limits = application_limits(Params(distances=(1,), cost_per_distance=1.5, allowance=3.0))

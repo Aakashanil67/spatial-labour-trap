@@ -9,7 +9,11 @@ Each scenario is run with seeds 1000..1029 for periods 0..120. A run is summaris
 over periods 91..120; the scenario summary is the mean and the 10th and 90th percentiles of
 those run means across the 30 seeds.
 
-Usage: python -m honours_simple.run --output <directory>
+Usage: python -m honours_simple.run --output <directory> [--allowance A] [--no-figures]
+
+--allowance changes the per-period search allowance in all four scenarios (default 3, the
+recorded baseline). The allowance-4 sensitivity comparison is run with
+--allowance 4 --no-figures --output results/honours_simple_allowance4.
 """
 
 import argparse
@@ -57,11 +61,11 @@ HATCHES = ["", "////", "xxxx", "...."]
 FOOTNOTE = "Illustrative parameters; bands/bars show 10th-90th percentile across 30 runs"
 
 
-def run_all_scenarios():
+def run_all_scenarios(allowance):
     """One DataFrame holding every period of every run, with the scenario and seed up front."""
     runs = []
     for scenario_id, (label, cost_multiplier, jobs) in enumerate(SCENARIOS):
-        params = Params(cost_multiplier=cost_multiplier, jobs=jobs)
+        params = Params(cost_multiplier=cost_multiplier, jobs=jobs, allowance=allowance)
         for seed in SEEDS:
             run = simulate(params, seed)
             identifiers = {
@@ -114,7 +118,7 @@ def git_output(*args):
     return result.stdout.strip()
 
 
-def write_manifest(path):
+def write_manifest(path, allowance):
     manifest = {
         # orig_argv[0] is the launcher's target on Windows venvs, so name the real interpreter
         "command_line": " ".join([sys.executable, *sys.orig_argv[1:]]),
@@ -129,7 +133,9 @@ def write_manifest(path):
             {
                 "scenario_id": scenario_id,
                 "label": label,
-                "params": dataclasses.asdict(Params(cost_multiplier=cost_multiplier, jobs=jobs)),
+                "params": dataclasses.asdict(
+                    Params(cost_multiplier=cost_multiplier, jobs=jobs, allowance=allowance)
+                ),
             }
             for scenario_id, (label, cost_multiplier, jobs) in enumerate(SCENARIOS)
         ],
@@ -225,18 +231,23 @@ def plot_group_bars(summary, metric, ylabel, top, path, extra_footnotes=()):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--output", type=Path, required=True, help="directory to write into")
-    output = parser.parse_args().output
+    parser.add_argument("--allowance", type=float, default=Params().allowance)
+    parser.add_argument("--no-figures", action="store_true")
+    args = parser.parse_args()
+    output = args.output
     output.mkdir(parents=True, exist_ok=True)
 
-    periods = run_all_scenarios()
+    periods = run_all_scenarios(args.allowance)
     run_summary = summarise_runs(periods)
     summary = summarise_scenarios(run_summary)
 
-    write_manifest(output / "manifest.json")
+    write_manifest(output / "manifest.json", args.allowance)
     write_csv(periods, output / "periods.csv")
     write_csv(run_summary, output / "run_summary.csv")
     write_csv(summary, output / "summary.csv")
 
+    if args.no_figures:
+        return
     window_note = f"Averages over periods {WINDOW_FIRST}-{WINDOW_LAST} of each run."
     plot_employment_paths(periods, output / "fig1_employment_paths.png")
     plot_group_bars(
