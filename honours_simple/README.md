@@ -45,6 +45,17 @@ With 150 jobs, cheaper search changes who is hired but not how many. With 300 jo
 about 98 jobs that stayed open because far workers could not apply. When jobs are scarce, a
 second application is worth almost nothing: every open job fills in the first round.
 
+## Sensitivity: allowance 4
+
+`python -m honours_simple.run --allowance 4 --no-figures --output results/honours_simple_allowance4`
+repeats the four scenarios with an allowance of 4, so every group can afford at least one
+application (limits 3/1/1 at normal cost, 3/3/2 at half cost). With 150 jobs, cheaper search then
+changes nothing: 150 employed and about half of every group in both cost arms. With 300 jobs it
+adds 2.9 workers (296.7 to 299.6), against 98.2 at allowance 3. The large allowance-3 effect
+depends on the far group crossing the threshold of affording one application; once everyone can
+apply, extra applications add little. This is a sensitivity check, not a decomposition: the
+higher allowance also changes other groups' limits.
+
 ## What it leaves out
 
 No geography, savings, wages, firm decisions or calibration to South African data. Jobs are a
