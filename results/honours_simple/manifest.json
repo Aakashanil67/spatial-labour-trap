@@ -1,0 +1,128 @@
+{
+  "command_line": "C:\\Users\\aakas\\Documents\\Projects\\Github Projects\\spatial-labour-trap\\.venv\\Scripts\\python.exe -m honours_simple.run --output results/honours_simple",
+  "git_commit": "13a73b7ce45ea471bf24b37554ed11e1bb138cfc",
+  "git_working_tree_clean": true,
+  "versions": {
+    "numpy": "2.5.2",
+    "pandas": "3.0.5",
+    "matplotlib": "3.11.1"
+  },
+  "scenarios": [
+    {
+      "scenario_id": 0,
+      "label": "Normal cost, 150 jobs",
+      "params": {
+        "workers_per_group": 100,
+        "distances": [
+          1,
+          2,
+          3
+        ],
+        "cost_per_distance": 1.2,
+        "cost_multiplier": 1.0,
+        "allowance": 3.0,
+        "max_applications": 3,
+        "jobs": 150,
+        "separation_prob": 0.03,
+        "periods": 120
+      }
+    },
+    {
+      "scenario_id": 1,
+      "label": "Half cost, 150 jobs",
+      "params": {
+        "workers_per_group": 100,
+        "distances": [
+          1,
+          2,
+          3
+        ],
+        "cost_per_distance": 1.2,
+        "cost_multiplier": 0.5,
+        "allowance": 3.0,
+        "max_applications": 3,
+        "jobs": 150,
+        "separation_prob": 0.03,
+        "periods": 120
+      }
+    },
+    {
+      "scenario_id": 2,
+      "label": "Normal cost, 300 jobs",
+      "params": {
+        "workers_per_group": 100,
+        "distances": [
+          1,
+          2,
+          3
+        ],
+        "cost_per_distance": 1.2,
+        "cost_multiplier": 1.0,
+        "allowance": 3.0,
+        "max_applications": 3,
+        "jobs": 300,
+        "separation_prob": 0.03,
+        "periods": 120
+      }
+    },
+    {
+      "scenario_id": 3,
+      "label": "Half cost, 300 jobs",
+      "params": {
+        "workers_per_group": 100,
+        "distances": [
+          1,
+          2,
+          3
+        ],
+        "cost_per_distance": 1.2,
+        "cost_multiplier": 0.5,
+        "allowance": 3.0,
+        "max_applications": 3,
+        "jobs": 300,
+        "separation_prob": 0.03,
+        "periods": 120
+      }
+    }
+  ],
+  "seeds": [
+    1000,
+    1001,
+    1002,
+    1003,
+    1004,
+    1005,
+    1006,
+    1007,
+    1008,
+    1009,
+    1010,
+    1011,
+    1012,
+    1013,
+    1014,
+    1015,
+    1016,
+    1017,
+    1018,
+    1019,
+    1020,
+    1021,
+    1022,
+    1023,
+    1024,
+    1025,
+    1026,
+    1027,
+    1028,
+    1029
+  ],
+  "periods": {
+    "first": 0,
+    "last": 120
+  },
+  "summary_window": {
+    "first": 91,
+    "last": 120
+  }
+}
