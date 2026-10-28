@@ -1,6 +1,6 @@
 # honours_simple
 
-This folder holds the model behind my Economics Honours thesis. The thesis asks two questions. How do distance-related search costs affect who finds work? And when does cheaper search raise total employment? This simple model replaces the larger spatial model in `src/`, which was too big for a 6,000-word thesis.
+This folder holds the model behind my Economics Honours thesis. The thesis asks two questions. How do distance-related search costs affect who finds work? And when does cheaper search raise total employment? This simple model replaces the larger spatial model in `src/`.
 
 ## The rules
 
